@@ -99,9 +99,9 @@ CRPC1 <- RenameIdents(object = CRPC1,
                       `9` = "Epithelial", 
                       `10` = "Immune", 
                       `11` = "Epithelial", 
-                      `12` = "Mast", )
+                      `12` = "Mast")
 p <- DimPlot(CRPC1, reduction = "umap", label = TRUE)
-ggsave("CRPC1/SingleR_Annotations.tiff", plot = p, width = 15, height = 7, dpi = 300)
+ggsave("CRPC1/SingleR_Annotations.tiff", plot = p, width = 10, height = 7, dpi = 300)
 
 
 
