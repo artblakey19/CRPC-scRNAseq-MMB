@@ -83,8 +83,6 @@ combined_CRPC <- FindClusters(combined_CRPC, resolution = 0.5)
 combined_CRPC <- RunUMAP(combined_CRPC, reduction = "integrated.dr", dims = 1:30)
 
 # Annotation ----
-DimPlot(combined_CRPC, reduction = "umap", label = TRUE)
-
 # Check marker genes
 p <- FeaturePlot(combined_CRPC,
     features = c(
@@ -93,25 +91,35 @@ p <- FeaturePlot(combined_CRPC,
     ),
     ncol = 4, pt.size = 0.1
 )
-ggsave("Results/FeaturePlot_markers_CCA.png", plot = p, width = 20, height = 15)
+ggsave("Results/FeaturePlot_markers.png", plot = p, width = 20, height = 15)
 
 # Find all markers
 utils_save_all_markers(combined_CRPC, "Results/all_markers.csv")
 
 # Label Annotation
-# combined_CRPC <- RenameIdents(
-#     object = combined_CRPC,
-#     `0` = "Epithelial",
-#     `1` = "Epithelial",
-#     `2` = "Epithelial",
-#     `3` = "Epithelial",
-#     `4` = "B/T",
-#     `5` = "Fibroblast",
-#     `6` = "Endothelial",
-#     `7` = "Smooth Muscle",
-#     `8` = "Leukocyte",
-#     `9` = "Epithelial",
-#     `10` = "Immune",
-#     `11` = "Epithelial",
-#     `12` = "Mast"
-# )
+combined_CRPC <- RenameIdents(
+    object = combined_CRPC,
+    `0` = "Epithelial",
+    `1` = "Fibroblast",
+    `2` = "Epithelial",
+    `3` = "Epithelial",
+    `4` = "Epithelial",
+    `5` = "Epithelial",
+    `6` = "Epithelial",
+    `7` = "CD8⁺ T",
+    `8` = "Endothelial",
+    `9` = "Epithelial",
+    `10` = "Epithelial",
+    `11` = "Smooth muscle",
+    `12` = "Epithelial",
+    `13` = "Epithelial",
+    `14` = "Macrophage",
+    `15` = "Neuronal",
+    `16` = "Mast"
+)
+# Save labelled UMAP
+p <- DimPlot(combined_CRPC, reduction = "umap", label = TRUE)
+ggsave("Results/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15)
+# Save labelled UMAP by patient
+p <- DimPlot(combined_CRPC, reduction = "umap", split.by = "orig.ident", label = TRUE)
+ggsave("Results/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15)
