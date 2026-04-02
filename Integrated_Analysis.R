@@ -3,16 +3,14 @@ library(dplyr)
 library(ggplot2)
 library(patchwork)
 library(glmGamPoi)
-library(harmony)
 # Multi-core processing
 library(future)
-plan("multisession", workers = 30)
+plan("multicore", workers = 30)
 options(future.globals.maxSize = 128 * 1024^3)
 
 source("scRNA_utils.R")
 
-# Load & QC ----
-# Load 3 Samples
+# Load 3 Samples ----
 p1 <- Read10X(data.dir = "~/Human CRPC scRNAseq/Raw data/CRPC1/filtered_feature_bc_matrix/")
 p2 <- Read10X(data.dir = "~/Human CRPC scRNAseq/Raw data/CRPC2/filtered_feature_bc_matrix/")
 p3 <- Read10X(data.dir = "~/Human CRPC scRNAseq/Raw data/CRPC3/filtered_feature_bc_matrix/")
@@ -30,6 +28,7 @@ combined_CRPC_raw <- merge(s1,
     project = "CRPC"
 )
 
+# QC ----
 # Check MT gene ratio & visualization
 combined_CRPC_raw[["percent.mt"]] <- PercentageFeatureSet(combined_CRPC_raw, pattern = "^MT-")
 VlnPlot(combined_CRPC_raw,
@@ -47,7 +46,7 @@ scatter_plots <- lapply(names(split_obj), function(sample) {
 combined_scatter <- wrap_plots(scatter_plots, ncol = 1)
 ggsave("Results/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15)
 
-# QC
+# Filter
 combined_CRPC <- subset(combined_CRPC_raw,
     subset = nFeature_RNA > 800 &
         nFeature_RNA < 9000 &
@@ -57,6 +56,8 @@ combined_CRPC <- subset(combined_CRPC_raw,
 # Normalization(SCTransform) & PCA ----
 combined_CRPC <- SCTransform(combined_CRPC, verbose = FALSE)
 combined_CRPC <- RunPCA(combined_CRPC, verbose = FALSE)
+# Draw elbow plot
+ggsave("Results/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15)
 
 # Integration ----
 # CCA Integration
@@ -66,7 +67,6 @@ combined_CRPC <- IntegrateLayers(
     normalization.method = "SCT",
     verbose = FALSE
 )
-
 # Harmony Integration
 combined_CRPC <- IntegrateLayers(
     object = combined_CRPC,
@@ -74,3 +74,44 @@ combined_CRPC <- IntegrateLayers(
     normalization.method = "SCT",
     verbose = FALSE
 )
+# Join layers
+combined_CRPC[["RNA"]] <- JoinLayers(combined_CRPC[["RNA"]])
+
+# Clustering(CCA) ----
+combined_CRPC <- FindNeighbors(combined_CRPC, reduction = "integrated.dr", dims = 1:30)
+combined_CRPC <- FindClusters(combined_CRPC, resolution = 0.5)
+combined_CRPC <- RunUMAP(combined_CRPC, reduction = "integrated.dr", dims = 1:30)
+
+# Annotation ----
+DimPlot(combined_CRPC, reduction = "umap", label = TRUE)
+
+# Check marker genes
+p <- FeaturePlot(combined_CRPC,
+    features = c(
+        "EPCAM", "KRT8", "AR", "PTPRC",
+        "VIM", "PECAM1", "ACTA2", "SYP"
+    ),
+    ncol = 4, pt.size = 0.1
+)
+ggsave("Results/FeaturePlot_markers_CCA.png", plot = p, width = 20, height = 15)
+
+# Find all markers
+utils_save_all_markers(combined_CRPC, "Results/all_markers.csv")
+
+# Label Annotation
+# combined_CRPC <- RenameIdents(
+#     object = combined_CRPC,
+#     `0` = "Epithelial",
+#     `1` = "Epithelial",
+#     `2` = "Epithelial",
+#     `3` = "Epithelial",
+#     `4` = "B/T",
+#     `5` = "Fibroblast",
+#     `6` = "Endothelial",
+#     `7` = "Smooth Muscle",
+#     `8` = "Leukocyte",
+#     `9` = "Epithelial",
+#     `10` = "Immune",
+#     `11` = "Epithelial",
+#     `12` = "Mast"
+# )
