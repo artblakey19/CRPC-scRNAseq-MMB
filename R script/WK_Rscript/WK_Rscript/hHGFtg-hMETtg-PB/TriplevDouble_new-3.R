@@ -1,0 +1,698 @@
+#hHGFtg-hMETtg & hHGFtg-hMETtg-Bcat
+
+#Add necessary tools to library
+library(Seurat)
+library(devtools)
+library(dplyr)
+library(Matrix)
+library(cowplot)
+library(ggplot2)
+library(reticulate)
+library(RColorBrewer)
+library(ggpubr)
+library(GGally)
+library(slingshot)
+library(BUSpaRse)
+library(tidyverse)
+library(tidymodels)
+library(scales)
+library(viridis)
+library(scater)
+library(PseudotimeDE)
+library(SingleCellExperiment)
+library(tibble)
+library(irlba)
+
+####Merging Dataset####
+
+setwd("//isi-dcnl/user_data/zjsun/group/Won Kyung Kim/hHGFtg-hMETtg-Pb/TriplevDouble")
+
+#HGFMETBcat_Primary
+Idents(object = PrimaryvWT.combined1) <- "stim"
+HGFMETBcat_Primary <- subset(PrimaryvWT.combined1, idents = c("HGFMETBcat_Primary"))
+
+HGFMETBcat_Primary <- FindVariableFeatures(HGFMETBcat_Primary, selection.method = "vst", nfeatures = 5000)
+#Clustering
+HGFMETBcat_Primary <- ScaleData(HGFMETBcat_Primary, verbose = FALSE)
+HGFMETBcat_Primary <- RunPCA(HGFMETBcat_Primary, npcs = 50, verbose = FALSE)
+ElbowPlot(HGFMETBcat_Primary, ndims = 50)
+
+HGFMETBcat_Primary <- FindNeighbors(HGFMETBcat_Primary, reduction = "pca", dims = 1:20)
+HGFMETBcat_Primary <- FindClusters(HGFMETBcat_Primary, resolution = 0.5)
+HGFMETBcat_Primary <- RunTSNE(HGFMETBcat_Primary, reduction = "pca", dims = 1:20)
+HGFMETBcat_Primary <- RunUMAP(HGFMETBcat_Primary, reduction = "pca", dims = 1:20)
+tiff(file = "HGFMETBcat_Primary darkblue UMAP.tiff", width = 6, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(HGFMETBcat_Primary, reduction = "umap", pt.size = 0.3, group.by = "stim", cols = c("darkblue")) + NoLegend()
+dev.off()
+
+#HGFMET
+Idents(object = HGF_MET1) <- "stim"
+tiff(file = "HGF_MET1 gray UMAP.tiff", width = 6, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(HGF_MET1, reduction = "umap", pt.size = 0.3, cols = c("gray")) + NoLegend()
+dev.off()
+
+#Stash old idents
+HGFMETBcat_Primary[["orig.clusters"]] <- Idents(object = HGFMETBcat_Primary)
+HGF_MET1[["orig.clusters"]] <- Idents(object = HGF_MET)
+
+#Set Current idents
+Idents(object = HGFMETBcat_Primary) <- "seurat_clusters"
+Idents(object = HGF_MET1) <- "seurat_clusters"
+
+HGFMETBcat_Primary$stim <- "Triple"
+HGF_MET1$stim <- "Double"
+
+TriplevDouble.anchors <- FindIntegrationAnchors(object.list = list(HGFMETBcat_Primary, HGF_MET1), dims = 1:20)
+TriplevDouble.combined <- IntegrateData(anchorset = TriplevDouble.anchors, dims = 1:20)
+DefaultAssay(TriplevDouble.combined) <- "integrated"
+
+#clustering
+TriplevDouble.combined <- ScaleData(TriplevDouble.combined, verbose = FALSE)
+TriplevDouble.combined <- RunPCA(TriplevDouble.combined, npcs = 30, verbose = FALSE)
+ElbowPlot(TriplevDouble.combined, ndims = 50)
+
+#Umap and Clustering
+TriplevDouble.combined <- FindNeighbors(TriplevDouble.combined, reduction = "pca", dims = 1:18)
+TriplevDouble.combined <- FindClusters(TriplevDouble.combined, resolution = 0.5)
+TriplevDouble.combined <- RunUMAP(TriplevDouble.combined, reduction = "pca", dims = 1:18)
+DimPlot(TriplevDouble.combined, reduction = "umap", pt.size = 0.3, label = TRUE)
+
+Idents(object = TriplevDouble.combined) <- "stim"
+TriplevDouble.combined <- RenameIdents(object = TriplevDouble.combined, 'Double' = "Double", 'Triple' = "Triple")
+TriplevDouble.combined[["stim"]] <- Idents(object = TriplevDouble.combined)
+
+tiff(file = "TriplevDouble.combined UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined, reduction = "umap", pt.size = 0.3, cols = c("grey", "darkblue"))
+dev.off()
+
+#Cell cycle assignment
+mouse_cell_cycle_genes <- readRDS(file = "//isi-dcnl/user_data/zjsun/group/Won Kyung Kim/ARKOvCtrl_3timepoint/E18.5/mouse_cell_cycle_genes.rds")
+s.genes <- mouse_cell_cycle_genes$s.genes
+g2m.genes <- mouse_cell_cycle_genes$g2m.genes
+
+DefaultAssay(TriplevDouble.combined) <- "RNA"
+all.genes <- rownames(TriplevDouble.combined)
+TriplevDouble.combined <- ScaleData(TriplevDouble.combined, features = all.genes)
+TriplevDouble.combined <- CellCycleScoring(TriplevDouble.combined, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+Idents(object = TriplevDouble.combined) <- "Phase"
+DimPlot(TriplevDouble.combined, reduction = "umap")
+tiff(file = "TriplevDouble.combined Cell Cyle UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined, reduction = "umap", pt.size = 0.3, cols = c("lightseagreen", "orange", "magenta2"))
+dev.off()
+
+#Cell Cycle regression
+TriplevDouble.combined1 <- TriplevDouble.combined
+DefaultAssay(TriplevDouble.combined1) <- "integrated"
+TriplevDouble.combined1 <- ScaleData(TriplevDouble.combined1, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(TriplevDouble.combined1))
+TriplevDouble.combined1 <- RunPCA(TriplevDouble.combined1, features = VariableFeatures(TriplevDouble.combined1))
+ElbowPlot(TriplevDouble.combined1, ndims = 50)
+
+TriplevDouble.combined1 <- FindNeighbors(TriplevDouble.combined1, reduction = "pca", dims = 1:26)
+TriplevDouble.combined1 <- FindClusters(TriplevDouble.combined1, resolution = 1.5)
+TriplevDouble.combined1 <- RunUMAP(TriplevDouble.combined1, reduction = "pca", dims = 1:26)
+
+Idents(object = TriplevDouble.combined1) <- "seurat_clusters"
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, label = TRUE)
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, split.by='stim',label = TRUE)
+
+Idents(object = TriplevDouble.combined1) <- "seurat_clusters"
+tiff(file = "TriplevDouble.combined1 UMAP dims26.tiff", width = 12, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, label = TRUE, split.by = "stim")
+dev.off()
+
+Idents(object = TriplevDouble.combined1) <- "Phase"
+tiff(file = "TriplevDouble.combined1 Cell Cyle UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, cols = c("lightseagreen", "orange", "magenta2"))
+dev.off()
+
+#Cell type identification
+DefaultAssay(TriplevDouble.combined1)<-"RNA"
+tiff(file = "TriplevDouble.combined1 celltype marker expression plots.tiff", width = 20, height = 20, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Krt5", "Krt4", "Krt8", "Cd24a", "Plp1",
+                                                                      "Fbln1", "Myh11", "Pecam1",
+                                                                      "Vim", "Tyrobp", "Ccl5", "Pate4"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90")
+dev.off()
+
+#Rename CellTypes
+Idents(object = TriplevDouble.combined1) <- "seurat_clusters"
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, label=TRUE)
+TriplevDouble.combined1 <- RenameIdents(object = TriplevDouble.combined1, 
+                                        '1'="BE",'3'="BE",'20'="BE",
+                                        '6'="LE", '7'="LE", "0"="LE", '19'="LE",
+                                        '2'="LE",'12'="LE",'5'="LE", '8'="LE",'11'="LE",
+                                        '22'="LE",'21'="LE",'18'="LE",'13'="LE",'4'="LE",'25'="SV",
+                                        '26'="SV", '16'="SV",
+                                        '10'="FB",'14'="FB", '23'="SM",'27'="Pericyte", '17'="VE",
+                                        '9'="Immune",'24'="Immune", '15'="Immune")  
+TriplevDouble.combined1[["CellTypes"]] <- Idents(object = TriplevDouble.combined1)
+
+#UMAP
+Idents(object = TriplevDouble.combined1) <- "CellTypes"
+tiff(file = "TriplevDouble.combined1 CellTypes UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, cols = c("chartreuse3", "salmon", "darkslategray3", "plum4", "brown3", "blueviolet", "blue", "bisque3", "steelblue1"))
+dev.off()
+tiff(file = "TriplevDouble.combined1 CellTypes split UMAP.tiff", width = 12, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1, reduction = "umap", pt.size = 0.3, split.by='stim', cols = c("chartreuse3", "salmon", "darkslategray3", "plum4", "brown3", "blueviolet", "blue", "bisque3", "steelblue1"))
+dev.off()
+
+#FeaturePlots
+DefaultAssay(TriplevDouble.combined1) <- "RNA"
+tiff(file = "TriplevDouble.combined1 hMETtg expression plots.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("hMETtg"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = 2.5)
+dev.off()
+tiff(file = "TriplevDouble.combined1 hMETtg split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("hMETtg"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Ar split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Ar"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Tmprss2 split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Tmprss2"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Pbsn split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Pbsn"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Krt5 split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Krt5"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Krt8 split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Krt8"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, min.cutoff = "q5", max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1 Vim split expression plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1, reduction = "umap", features = c("Vim"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+
+#Cell counts
+Idents(object = TriplevDouble.combined1) <- "CellTypes"
+TriplevDouble.combined1$stim.CellTypes <- paste(Idents(TriplevDouble.combined1), TriplevDouble.combined1$stim, sep = "_")
+Idents(object = TriplevDouble.combined1) <- "stim.CellTypes"
+table(Idents(TriplevDouble.combined1))
+
+#DEGs
+DefaultAssay(TriplevDouble.combined1) <- "RNA"
+Idents(object = TriplevDouble.combined1) <- "CellTypes"
+TriplevDouble.combined1 <- ScaleData(TriplevDouble.combined1, features = rownames(TriplevDouble.combined1))
+TriplevDouble.combined1.allMarkers <- FindAllMarkers(TriplevDouble.combined1, min.pct = 0.25, logfc.threshold = 0.25, only.pos = TRUE)
+write.csv(TriplevDouble.combined1.allMarkers, "TriplevDouble.combined1.CellTypes.Markers.csv")
+
+#Dotplot
+Idents(object = TriplevDouble.combined1) <- "CellTypes"
+tiff(file = "TriplevDouble.combined1 CellTypes markers DotPlot.tiff", width =12 , height = 3.1, units = "in", compression = "lzw", res = 800)
+DotPlot(TriplevDouble.combined1, features = c("Krt15", "Krt14", "Krt5", "Aqp3", "Col17a1", 
+                                           "Prr9", "Pigr","Slc12a2", "Arl14", "Bex1",
+                                          "Svs4",  "Pate4", "A630095E13Rik", "D730048I06Rik", "Sprr2f", 
+                                           "Apod", "Bgn", "Igfbp6", "Serping1", "Col1a2",
+                                           "Ndufa4l2", "Adamts4", "Myh11", "Pdgfrb", "Des",
+                                           "Plp1", "Kcna1", "Cdh19", "S100b", "Fxyd1",
+                                           "Aqp1", "Plvap", "Cdh5", "Pecam1", "Cd93",
+                                           "H2-Eb1", "C1qa", "Rgs1", "Tyrobp", "Fcer1g"
+),cols = c("light grey", "red")) + RotatedAxis()
+dev.off()
+
+
+####Subcluster epi DoublevTriple####
+setwd("//isi-dcnl/user_data/zjsun/group/Won Kyung Kim/hHGFtg-hMETtg-Pb/TriplevDouble/TriplevDouble.combined1.epi1")
+
+Idents(object = TriplevDouble.combined1) <- "CellTypes"
+TriplevDouble.combined1.epi <- subset(TriplevDouble.combined1, idents = c("BE","LE"))
+DimPlot(TriplevDouble.combined1.epi, reduction = "umap", pt.size = 0.3, label = TRUE)
+
+#Cell counts
+Idents(object = TriplevDouble.combined1.epi) <- "CellTypes"
+TriplevDouble.combined1.epi$stim.CellTypes <- paste(Idents(TriplevDouble.combined1.epi), TriplevDouble.combined1.epi$stim, sep = "_")
+Idents(object = TriplevDouble.combined1.epi) <- "stim.CellTypes"
+table(Idents(TriplevDouble.combined1.epi))
+
+Idents(object = TriplevDouble.combined1.epi) <- "seurat_clusters"
+
+#Run the standard workflow for visualization and clustering
+DefaultAssay(TriplevDouble.combined1.epi) <- "integrated"
+TriplevDouble.combined1.epi <- ScaleData(TriplevDouble.combined1.epi, verbose = FALSE)
+TriplevDouble.combined1.epi <- RunPCA(TriplevDouble.combined1.epi, npcs = 50, verbose = FALSE)
+ElbowPlot(TriplevDouble.combined1.epi, ndims = 50)
+
+#Umap and Clustering
+TriplevDouble.combined1.epi <- FindNeighbors(TriplevDouble.combined1.epi, reduction = "pca", dims = 1:20)
+TriplevDouble.combined1.epi <- FindClusters(TriplevDouble.combined1.epi, resolution = 0.7)
+TriplevDouble.combined1.epi <- RunUMAP(TriplevDouble.combined1.epi, reduction = "pca", dims = 1:20)
+DimPlot(TriplevDouble.combined1.epi, reduction = "umap", pt.size = 0.3, label = TRUE)
+
+#Cell cycle assignment epi
+DefaultAssay(TriplevDouble.combined1.epi) <- "RNA"
+all.genes <- rownames(TriplevDouble.combined1.epi)
+TriplevDouble.combined1.epi <- ScaleData(TriplevDouble.combined1.epi, features = all.genes)
+TriplevDouble.combined1.epi <- CellCycleScoring(TriplevDouble.combined1.epi, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+
+Idents(object = TriplevDouble.combined1.epi) <- "Phase"
+tiff(file = "TriplevDouble.combined1.epi Cell Cyle UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi, reduction = "umap", pt.size = 0.3, cols = c("lightseagreen", "orange", "magenta2"))
+dev.off()
+
+#Cell Cycle Regression epi
+TriplevDouble.combined1.epi1 <- TriplevDouble.combined1.epi
+DefaultAssay(TriplevDouble.combined1.epi1) <- "integrated"
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, vars.to.regress = c("S.Score", "G2M.Score"), features = rownames(TriplevDouble.combined1.epi1))
+TriplevDouble.combined1.epi1 <- RunPCA(TriplevDouble.combined1.epi1, features = VariableFeatures(TriplevDouble.combined1.epi1))
+ElbowPlot(TriplevDouble.combined1.epi1, ndims = 50)
+
+TriplevDouble.combined1.epi1 <- FindNeighbors(TriplevDouble.combined1.epi1, reduction = "pca", dims = 1:23)
+TriplevDouble.combined1.epi1 <- FindClusters(TriplevDouble.combined1.epi1, resolution = 0.8)
+TriplevDouble.combined1.epi1 <- RunUMAP(TriplevDouble.combined1.epi1, reduction = "pca", dims = 1:23)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, label = TRUE, split.by = "stim")
+
+tiff(file = "TriplevDouble.combined1.epi1 seurat dim23 UMAP.tiff", width = 12, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, label = TRUE, split.by = "stim")
+dev.off()
+
+#DEGs
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "seurat_clusters"
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = rownames(TriplevDouble.combined1.epi1))
+TriplevDouble.combined1.epi1.allMarkers <- FindAllMarkers(TriplevDouble.combined1.epi1, min.pct = 0.25, logfc.threshold = 0.25, only.pos = TRUE)
+write.csv(TriplevDouble.combined1.epi1.allMarkers, "TriplevDouble.combined1.epi1.seurat.allMarkers.csv")
+
+Idents(object = TriplevDouble.combined1.epi1) <- "Phase"
+tiff(file = "TriplevDouble.combined1.epi1 after Cell Cyle Regression UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, cols = c("lightseagreen", "orange", "magenta2"))
+dev.off()
+
+#Featureplots
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+tiff(file = "TriplevDouble.combined1.epi1 celltype marker expression plots.tiff", width = 12, height = 12, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Krt5", "Krt14", "Krt19", "Krt8", "Ppp1r1b", "Vim", "hMETtg", "Trp63"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90")
+dev.off()
+
+#Rename Clusters
+Idents(object = TriplevDouble.combined1.epi1) <- "seurat_clusters"
+TriplevDouble.combined1.epi1 <- RenameIdents(object = TriplevDouble.combined1.epi1, 
+                                             '18'="BE1", '5'="BE2",'20'="BE2",
+                                             '6'="BE3", '13' = "BE4", '14'="BE4", 
+                                             '7'="LE1",'12'="LE1", '0'="LE2", '1' = "LE2", '19' ="LE2",
+                                             '4' = "LE3", '11'="LE3",
+                                             '3' = "LE4", '9'="LE5", '2'="LE6",'15'="LE6",
+                                             '10'="LE7", '8'="LE8", '16'="UrLE", 
+                                             '17'="OE")  
+TriplevDouble.combined1.epi1[["EpiCellTypes"]] <- Idents(object = TriplevDouble.combined1.epi1)
+
+#Umap Epicelltype
+tiff(file = "TriplevDouble.combined1.epi1 EpiCellTypes UMAP.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, label.size = 6, 
+        cols = c("orchid", "skyblue1", "chartreuse3", "brown3", "deeppink1", "khaki4",  "blue",  "red", 
+                 "aquamarine3", "bisque3", "plum4", 
+                 "salmon", "darkorange1", "goldenrod3"))
+dev.off()
+
+tiff(file = "TriplevDouble.combined1.epi1 EpiCellTypes split UMAP.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, label.size = 6, split.by = "stim",
+        cols = c("orchid", "skyblue1", "chartreuse3", "brown3", "deeppink1", "khaki4",  "blue",  "red", 
+                 "aquamarine3", "bisque3", "plum4", 
+                 "salmon", "darkorange1", "goldenrod3"))
+dev.off()
+
+#Featureplot
+DefaultAssay(TriplevDouble.combined1.epi1)<-"RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+tiff(file = "TriplevDouble.combined1.epi1 hMETtg split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("hMETtg"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.5, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Tcf4 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Tcf4"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Axin2 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Axin2"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Tmprss2 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Tmprss2"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, min.cutoff = "q5", max.cutoff = "q95", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Nkx3-1 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Nkx3-1"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95", min.cutoff = "q5", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Pbsn split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Pbsn"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Ar split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Ar"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95")
+dev.off()
+
+tiff(file = "TriplevDouble.combined1.epi1 Krt5 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Krt5"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Krt8 split plots.tiff", width = 10, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Krt8"), split.by = "stim", cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95", min.cutoff = "q5", keep.scale = "all")
+dev.off()
+
+DefaultAssay(TriplevDouble.combined1.epi1)<-"RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+tiff(file = "TriplevDouble.combined1.epi1 hMETtg plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("hMETtg"), cols = c("light grey", "red"), pt.size = 0.5,  min.cutoff = "q5")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Tcf4 plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Tcf4"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Axin2 plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Axin2"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q90", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Tmprss2 plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Tmprss2"),cols = c("light grey", "red"), pt.size = 0.3, min.cutoff = "q5", max.cutoff = "q95", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Nkx3-1 plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Nkx3-1"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95", min.cutoff = "q5", keep.scale = "all")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Pbsn plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Pbsn"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95")
+dev.off()
+tiff(file = "TriplevDouble.combined1.epi1 Ar plots.tiff", width = 5.5, height = 5, units = "in", compression = "lzw", res = 800)
+FeaturePlot(TriplevDouble.combined1.epi1, reduction = "umap", features = c("Ar"), cols = c("light grey", "red"), pt.size = 0.3, max.cutoff = "q95")
+dev.off()
+
+#Cell counts
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+TriplevDouble.combined1.epi1$stim.EpiCellTypes <- paste(Idents(TriplevDouble.combined1.epi1), TriplevDouble.combined1.epi1$stim, sep = "_")
+Idents(object = TriplevDouble.combined1.epi1) <- "stim.EpiCellTypes"
+table(Idents(TriplevDouble.combined1.epi1))
+
+Idents(object = TriplevDouble.combined1.epi1) <- "Phase"
+tiff(file = "TriplevDouble.combined1.epi1 Cell Cyle UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, cols = c("lightseagreen", "orange", "magenta2"))
+dev.off()
+
+Idents(object = TriplevDouble.combined1.epi1) <- "Phase"
+tiff(file = "TriplevDouble.combined1.epi1 Cell Cyle for count UMAP.tiff", width = 6.5, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, cols = c("red", "lightgrey", "gold"))
+dev.off()
+
+#Cell counts
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+TriplevDouble.combined1.epi1$Phase.EpiCellTypes <- paste(Idents(TriplevDouble.combined1.epi1), TriplevDouble.combined1.epi1$Phase, sep = "_")
+Idents(object = TriplevDouble.combined1.epi1) <- "Phase.EpiCellTypes"
+table(Idents(TriplevDouble.combined1.epi1))
+
+#DEGs
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = rownames(TriplevDouble.combined1.epi1))
+TriplevDouble.combined1.epi1.allMarkers <- FindAllMarkers(TriplevDouble.combined1.epi1, min.pct = 0.25, logfc.threshold = 0.25, only.pos = TRUE)
+write.csv(TriplevDouble.combined1.epi1.allMarkers, "TriplevDouble.combined1.epi1.EpiCellTypes.allMarkers.csv")
+
+#Dotplot
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+tiff(file = "TriplevDouble.combined1.epi1 EpiCellTypes markers DotPlot.tiff", width =16.5 , height = 4.5, units = "in", compression = "lzw", res = 800)
+DotPlot(TriplevDouble.combined1.epi1, features = c("Tmem171", "Egfl6", "Ncam1", "Clca3a2", "Adm", 
+                                                   "Krt15", "Tubb6", "Tpm1", "Palld", "Ctsl", 
+                                                   "Aqp3", "Lgals7", "Col17a1", "Anxa8", "Lamb3",
+                                                   "Sncg", "Ifi202b", "Gpnmb","Slc7a8", "Gpr87", 
+                                                   "Lars2", "AY036118", "Gm42418", "Gm26917", "Hbb-bs",
+                                                   "Areg", "Ctse", "Basp1", "Btc", "Ly6a", 
+                                                   "Defa22", "Defa21", "Defa5", "Cryba4", "Slc40a1",
+                                                   "Coch", "Tgfb2", "Dkk2", "Zeb2", "Cxcl2",
+                                                   "Tgm4", "9530053A07Rik", "Gm5615", "Tcaf2", "Spink8",
+                                                   "Pigr", "Tspan1",  "Tnfrsf21", "Dcxr", "Cldn3",
+                                                   "Msmb", "Mme", "Apof", "Pcp4", "Agtr1a", 
+                                                   "Spink1", "Sbpl", "Crabp1", "Col6a3", 'Gucy2g', 
+                                                   "Gsdmc2", "Gsdmc3", "Barx2", "Cxcl15", "Krt4", 
+                                                   "Serping1", "Igfbp6", "Fbln1", "Serpinf1", "Col1a2"
+),cols = c("light grey", "red")) + RotatedAxis()
+dev.off()
+
+##Heatmap
+#scale.data
+Epi_df <- as.data.frame(t(TriplevDouble.combined1.epi1$RNA@scale.data))
+Epi_df_selected <- cbind( Epi_df$Cenpe, Epi_df$Cenpf, Epi_df$Top2a, Epi_df$Ube2s, Epi_df$Slc7a5,Epi_df$Pcna,Epi_df$Rangap1,
+                          Epi_df$Tmprss2, Epi_df$Pbsn, Epi_df$`Nkx3-1`, Epi_df$Fkbp5, Epi_df$Azgp1,  
+                          Epi_df$Rap1b, Epi_df$Grb2, Epi_df$Kras, Epi_df$Spint1, Epi_df$Uba52, Epi_df$Tns3, Epi_df$Bcar1, Epi_df$Hpn, 
+                          Epi_df$Axin2, Epi_df$Cd44, Epi_df$Mmp7, Epi_df$Dkk2, Epi_df$Tcf4, Epi_df$Myc,
+                          Epi_df$Rpl12, Epi_df$Rpl13a,Epi_df$Rpl3, Epi_df$Rps16, Epi_df$Rps20, Epi_df$Rps27a,Epi_df$Rps5)
+Epi_df_selected <- as.data.frame(Epi_df_selected)
+colnames(Epi_df_selected) <- c( "Cenpe",	"Cenpf",	"Top2a", "Ube2s", "Slc7a5","Pcna","Rangap1",
+                                "Tmprss2", "Pbsn",	'Nkx3-1', "Fkbp5", "Azgp1",	
+                                "Rap1b",	"Grb2",	"Kras",	"Spint1",	"Uba52",	"Tns3",	"Bcar1",	"Hpn",
+                                "Axin2", "Cd44",	"Mmp7",	"Dkk2", "Tcf4", "Myc",
+                                "Rpl12", "Rpl13a", "Rpl3", "Rps16", "Rps20", "Rps27a", "Rps5")
+rownames(Epi_df_selected) <- row.names(Epi_df)
+write.csv(Epi_df_selected, file = "Epi_df_selected_scaledata.csv")
+
+
+#meta.data
+write.csv(TriplevDouble.combined1.epi1@meta.data, file = "TriplevDouble.combined1.epi1_metadata.csv")
+
+#Env
+library(tidyverse)
+library(pheatmap)
+library(ggplot2)
+library(ggplotify)
+
+df <- read.csv("Heatmap_Triple_and_Double_Epi_EpiCellTypes.csv", header = TRUE, sep = ",")
+colnames(df)[1] <- "Clusters"
+df <- as.data.frame(df)
+
+#
+df <- column_to_rownames(df, var = "Clusters")
+df <- as.matrix(df)
+d <- pheatmap::pheatmap(df, cluster_cols = F, cluster_rows = F)
+
+##Heatmap2
+# Adding a pseudo-count of 10 to avoid strong color jumps with just 1 cell.
+# Change to log10
+pheatmap::pheatmap(log10(df+10),scale="column",
+                   fontsize = 10,color = colorRampPalette(c("purple","grey0", "yellow"))(101),
+                   cluster_cols = F, cluster_rows = F)
+
+tiff(file = "TriplevDouble.combined1.Epi EpiCellTypes Heatmap G2M AR MET WNT AR Ribosome.tiff", width = 6, height = 4, units = "in", compression = "lzw", res = 800)
+pheatmap::pheatmap(log10(df+10),scale="column",
+                   fontsize = 10,color = colorRampPalette(c("purple","grey0", "yellow"))(101),
+                   cluster_cols = F, cluster_rows = F)
+dev.off()
+
+####hMETtgPos vs hMETtgNeg####
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+
+TriplevDouble.combined1.epi1METPos <- subset(x=TriplevDouble.combined1.epi1,  subset = `hMETtg` > 0)
+TriplevDouble.combined1.epi1METNeg <- subset(x=TriplevDouble.combined1.epi1,  subset = `hMETtg` == 0)
+Idents(object = TriplevDouble.combined1.epi1METPos) <- "METPos"
+Idents(object = TriplevDouble.combined1.epi1METNeg) <- "METNeg"
+TriplevDouble.combined1.epi1METPos[["METExp"]] <- Idents(object = TriplevDouble.combined1.epi1METPos)
+TriplevDouble.combined1.epi1METNeg[["METExp"]] <- Idents(object = TriplevDouble.combined1.epi1METNeg)
+TriplevDouble.combined1.epi1MET <- merge(x = TriplevDouble.combined1.epi1METPos, y = TriplevDouble.combined1.epi1METNeg)
+Idents(object = TriplevDouble.combined1.epi1MET) <- "METExp"
+TriplevDouble.combined1.epi1$METExp <- Idents(object = TriplevDouble.combined1.epi1MET)
+Idents(object = TriplevDouble.combined1.epi1) <- "METExp"
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, cols = c("red", "lightgrey"))
+
+tiff(file = "TriplevDouble.combined1.epi1 hMETPos highlighted stim UMAP.tiff", width = 12, height = 6, units = "in", compression = "lzw", res = 800)
+DimPlot(TriplevDouble.combined1.epi1, reduction = "umap", pt.size = 0.3, cols = c("red", "lightgrey"), split.by = "stim")
+dev.off()
+
+#Subset hMETPos BELE
+Idents(object = TriplevDouble.combined1.epi1METPos) <- "EpiCellTypes"
+DimPlot(TriplevDouble.combined1.epi1METPos, reduction = "umap", pt.size = 0.3, label = TRUE)
+
+TriplevDouble.combined1.BELEMETPos <- subset(TriplevDouble.combined1.epi1METPos, idents = c("BE1","BE2", "BE3", "BE4",
+                                                                                     "LE1", "LE2", "LE3", "LE4",
+                                                                                     "LE5", "LE6", "LE7", "LE8"))
+DimPlot(TriplevDouble.combined1.BELEMETPos, reduction = "umap", pt.size = 0.3, label = TRUE)
+
+Idents(object = TriplevDouble.combined1.BELEMETPos) <- "EpiCellTypes"
+TriplevDouble.combined1.BELEMETPos$stim.EpiCellTypes <- paste(Idents(TriplevDouble.combined1.BELEMETPos), TriplevDouble.combined1.BELEMETPos$stim, sep = "_")
+Idents(object = TriplevDouble.combined1.BELEMETPos) <- "stim.EpiCellTypes"
+table(Idents(TriplevDouble.combined1.BELEMETPos))
+
+#DEGs_hMETPosEpi_TriplevsDouble
+DefaultAssay(TriplevDouble.combined1.BELEMETPos) <- "RNA"
+Idents(object = TriplevDouble.combined1.BELEMETPos) <- "stim"
+all.genes <- rownames(TriplevDouble.combined1.BELEMETPos)
+TriplevDouble.combined1.BELEMETPos <- ScaleData(TriplevDouble.combined1.BELEMETPos, features = all.genes)
+hMETtgPos_BELE_TriplevDouble.0.Markers <- FindMarkers(TriplevDouble.combined1.BELEMETPos, ident.1 = c("Triple"), 
+                                                    ident.2 = c("Double"), min.pct = 0, logfc.threshold = 0)
+write.csv(hMETtgPos_BELE_TriplevDouble.0.Markers, "hMETtgPos_BELE_TriplevDouble.0.Markers.csv")
+
+#p.adjust
+DEG_hMETtgPos_BELE_TriplevDouble <- read.csv("hMETtgPos_BELE_TriplevDouble.0.Markers.csv") 
+DEG_hMETtgPos_BELE_TriplevDouble_pvalue <- DEG_hMETtgPos_BELE_TriplevDouble$p_val
+DEG_hMETtgPos_BELE_TriplevDouble_pvalue=as.numeric(DEG_hMETtgPos_BELE_TriplevDouble_pvalue)
+DEG_hMETtgPos_BELE_TriplevDouble_BH = p.adjust(DEG_hMETtgPos_BELE_TriplevDouble_pvalue, "BH")
+write.csv(DEG_hMETtgPos_BELE_TriplevDouble_BH, "DEG_hMETtgPos_BELE_TriplevDouble_BH.csv")
+
+#Mouse to human ortholog conversion
+library(babelgene)
+# Must have a column named Symbol
+genelist = DEG_hMETtgPos_BELE_TriplevDouble_preranked$symbol
+ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked<- orthologs(genes = genelist, species = "mouse", human = F, min_support = 5, top = TRUE)
+
+DEG_hMETtgPos_BELE_TriplevDouble_preranked <- inner_join(DEG_hMETtgPos_BELE_TriplevDouble_preranked,ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked,by = "symbol") %>% select(contains (c("symbol","logFC")))
+
+write.table(DEG_hMETtgPos_BELE_TriplevDouble_preranked,"converted_gsea_DEG_hMETtgPos_BELE_TriplevDouble_preranked.txt")
+
+#Rename
+Idents(object = TriplevDouble.combined1.BELEMETPos) <- "stim"
+TriplevDouble.combined1.BELEMETPos <- RenameIdents(object = TriplevDouble.combined1.BELEMETPos, 
+                                                 'Double'="Double",'Triple'="Triple")  
+TriplevDouble.combined1.BELEMETPos[["stim"]] <- Idents(object = TriplevDouble.combined1.BELEMETPos)
+
+#Vlnplots
+
+data_summary <- function(x) {
+  m <- mean(x)
+  ymin <- m-sd(x)
+  ymax <- m+sd(x)
+  return(c(y=m,ymin=ymin,ymax=ymax))
+}
+
+DefaultAssay(TriplevDouble.combined1.BELEMETPos) <- "RNA"
+Idents(object = TriplevDouble.combined1.BELEMETPos) <- "stim"
+tiff(file = "TriplevDouble.combined1.BELEMETPos Xpo1 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Xpo1", pt.size = 0, cols = c("#3399FF",   "#E06666"), y.max = 1) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Ran Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Ran", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Rpl12 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Rpl12", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Rps16 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Rps16", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Myc Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Myc", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Eif4e2 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Eif4e2", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Eif4a1 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Eif4a1", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Axin2 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Axin2", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Tcf4 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Tcf4", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Pbsn Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Pbsn", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+tiff(file = "TriplevDouble.combined1.BELEMETPos Fkbp5 Vln.tiff", width = 3.7, height = 4.5, units = "in", compression = "lzw", res = 800)
+VlnPlot(TriplevDouble.combined1.BELEMETPos, features = "Fkbp5", pt.size = 0, cols = c("#3399FF",   "#E06666")) + NoLegend() +
+  stat_summary(fun.data=data_summary) + stat_summary(fun = mean, geom='point', size = 25, colour = "green2", shape = 95)
+dev.off()
+
+####LE4 vs LE3####
+#DEGs_LE4 vs LE3
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "stim.EpiCellTypes"
+all.genes <- rownames(TriplevDouble.combined1.epi1)
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = all.genes)
+Triple_LE4v3.0.Markers <- FindMarkers(TriplevDouble.combined1.epi1, ident.1 = c("LE4_Triple"), 
+                                                      ident.2 = c("LE3_Triple"), min.pct = 0, logfc.threshold = 0)
+write.csv(Triple_LE4v3.0.Markers, "Triple_LE4v3.0.Markers.csv")
+
+#p.adjust
+DEG_Triple_LE4v3 <- read.csv("Triple_LE4v3.0.Markers.csv") 
+DEG_Triple_LE4v3_pvalue <- DEG_Triple_LE4v3$p_val
+DEG_Triple_LE4v3_pvalue=as.numeric(DEG_Triple_LE4v3_pvalue)
+DEG_Triple_LE4v3_BH = p.adjust(DEG_Triple_LE4v3_pvalue, "BH")
+write.csv(DEG_Triple_LE4v3_BH, "DEG_Triple_LE4v3_BH.csv")
+
+#Mouse to human ortholog conversion
+library(babelgene)
+# Must have a column named Symbol
+genelist = DEG_hMETtgPos_BELE_TriplevDouble_preranked$symbol
+ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked<- orthologs(genes = genelist, species = "mouse", human = F, min_support = 5, top = TRUE)
+
+DEG_hMETtgPos_BELE_TriplevDouble_preranked <- inner_join(DEG_hMETtgPos_BELE_TriplevDouble_preranked,ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked,by = "symbol") %>% select(contains (c("symbol","logFC")))
+
+write.table(DEG_hMETtgPos_BELE_TriplevDouble_preranked,"converted_gsea_DEG_hMETtgPos_BELE_TriplevDouble_preranked.txt")
+
+####LE4 vs LE15678####
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+all.genes <- rownames(TriplevDouble.combined1.epi1)
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = all.genes)
+TriplevDouble_LE4v15678.0.Markers <- FindMarkers(TriplevDouble.combined1.epi1, ident.1 = c("LE4"), 
+                                      ident.2 = c("LE1", "LE5", "LE6", "LE7", "LE8"), min.pct = 0, logfc.threshold = 0)
+write.csv(TriplevDouble_LE4v15678.0.Markers, "TriplevDouble_LE4v15678.0.Markers.csv")
+
+#p.adjust
+DEG_TriplevDouble_LE4v15678 <- read.csv("TriplevDouble_LE4v15678.0.Markers.csv") 
+DEG_TriplevDouble_LE4v15678_pvalue <- DEG_TriplevDouble_LE4v15678$p_val
+DEG_TriplevDouble_LE4v15678_pvalue=as.numeric(DEG_TriplevDouble_LE4v15678_pvalue)
+DEG_TriplevDouble_LE4v15678_BH = p.adjust(DEG_TriplevDouble_LE4v15678_pvalue, "BH")
+write.csv(DEG_TriplevDouble_LE4v15678_BH, "DEG_TriplevDouble_LE4v15678_BH.csv")
+
+#Mouse to human ortholog conversion
+library(babelgene)
+# Must have a column named Symbol
+genelist = DEG_LE4vLE15678_TriplevDouble_preranked$symbol
+ortho_DEG_LE4vLE15678_TriplevDouble_preranked <- orthologs(genes = genelist, species = "mouse", human = F, min_support = 5, top = TRUE)
+
+DEG_LE4vLE15678_TriplevDouble_preranked <- inner_join(DEG_LE4vLE15678_TriplevDouble_preranked,ortho_DEG_LE4vLE15678_TriplevDouble_preranked,by = "symbol") %>% select(contains (c("symbol","logFC")))
+
+write.table(DEG_LE4vLE15678_TriplevDouble_preranked,"DEG_LE4vLE15678_TriplevDouble_converted.txt")
+
+####LE4 vs LE125678####
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+all.genes <- rownames(TriplevDouble.combined1.epi1)
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = all.genes)
+TriplevDouble_LE4v125678.0.Markers <- FindMarkers(TriplevDouble.combined1.epi1, ident.1 = c("LE4"), 
+                                                 ident.2 = c("LE1", "LE2", "LE5", "LE6", "LE7", "LE8"), min.pct = 0, logfc.threshold = 0)
+write.csv(TriplevDouble_LE4v125678.0.Markers, "TriplevDouble_LE4v125678.0.Markers.csv")
+
+#p.adjust
+DEG_TriplevDouble_LE4v125678 <- read.csv("TriplevDouble_LE4v125678.0.Markers.csv") 
+DEG_TriplevDouble_LE4v125678_pvalue <- DEG_TriplevDouble_LE4v125678$p_val
+DEG_TriplevDouble_LE4v125678_pvalue=as.numeric(DEG_TriplevDouble_LE4v125678_pvalue)
+DEG_TriplevDouble_LE4v125678_BH = p.adjust(DEG_TriplevDouble_LE4v125678_pvalue, "BH")
+write.csv(DEG_TriplevDouble_LE4v125678_BH, "DEG_TriplevDouble_LE4v125678_BH.csv")
+
+#Mouse to human ortholog conversion
+library(babelgene)
+# Must have a column named Symbol
+genelist = DEG_hMETtgPos_BELE_TriplevDouble_preranked$symbol
+ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked<- orthologs(genes = genelist, species = "mouse", human = F, min_support = 5, top = TRUE)
+
+DEG_hMETtgPos_BELE_TriplevDouble_preranked <- inner_join(DEG_hMETtgPos_BELE_TriplevDouble_preranked,ortho_DEG_hMETtgPos_BELE_TriplevDouble_preranked,by = "symbol") %>% select(contains (c("symbol","logFC")))
+
+write.table(DEG_hMETtgPos_BELE_TriplevDouble_preranked,"converted_gsea_DEG_hMETtgPos_BELE_TriplevDouble_preranked.txt")
+
+####LE3 vs LE15678####
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+all.genes <- rownames(TriplevDouble.combined1.epi1)
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = all.genes)
+TriplevDouble_LE3v15678.0.Markers <- FindMarkers(TriplevDouble.combined1.epi1, ident.1 = c("LE3"), 
+                                                 ident.2 = c("LE1", "LE5", "LE6", "LE7", "LE8"), min.pct = 0, logfc.threshold = 0)
+write.csv(TriplevDouble_LE3v15678.0.Markers, "TriplevDouble_LE3v15678.0.Markers.csv")
+
+#p.adjust
+DEG_TriplevDouble_LE3v15678 <- read.csv("TriplevDouble_LE3v15678.0.Markers.csv") 
+DEG_TriplevDouble_LE3v15678_pvalue <- DEG_TriplevDouble_LE3v15678$p_val
+DEG_TriplevDouble_LE3v15678_pvalue=as.numeric(DEG_TriplevDouble_LE3v15678_pvalue)
+DEG_TriplevDouble_LE3v15678_BH = p.adjust(DEG_TriplevDouble_LE3v15678_pvalue, "BH")
+write.csv(DEG_TriplevDouble_LE3v15678_BH, "DEG_TriplevDouble_LE3v15678_BH.csv")
+####LE2 vs LE15678####
+DefaultAssay(TriplevDouble.combined1.epi1) <- "RNA"
+Idents(object = TriplevDouble.combined1.epi1) <- "EpiCellTypes"
+all.genes <- rownames(TriplevDouble.combined1.epi1)
+TriplevDouble.combined1.epi1 <- ScaleData(TriplevDouble.combined1.epi1, features = all.genes)
+TriplevDouble_LE2v15678.0.Markers <- FindMarkers(TriplevDouble.combined1.epi1, ident.1 = c("LE2"), 
+                                                 ident.2 = c("LE1", "LE5", "LE6", "LE7", "LE8"), min.pct = 0, logfc.threshold = 0)
+write.csv(TriplevDouble_LE2v15678.0.Markers, "TriplevDouble_LE2v15678.0.Markers.csv")
+
+#p.adjust
+DEG_TriplevDouble_LE2v15678 <- read.csv("TriplevDouble_LE2v15678.0.Markers.csv") 
+DEG_TriplevDouble_LE2v15678_pvalue <- DEG_TriplevDouble_LE2v15678$p_val
+DEG_TriplevDouble_LE2v15678_pvalue=as.numeric(DEG_TriplevDouble_LE2v15678_pvalue)
+DEG_TriplevDouble_LE2v15678_BH = p.adjust(DEG_TriplevDouble_LE2v15678_pvalue, "BH")
+write.csv(DEG_TriplevDouble_LE2v15678_BH, "DEG_TriplevDouble_LE2v15678_BH.csv")
+
+

@@ -1,0 +1,78 @@
+seurat object 만든 뒤 rowname(오브젝트 명) 하면 유전자 목록 얻을 수 있음
+메모리 절약을 위해 Logical map이라는 형태로 저장되기 때문에 그냥 object 뜯어서는 알 수 없음.
+rownames를 seurat objects에 대해 호출하면 seurat library가 알아서 연결해서 보여줌
+rownames는 R의 기본 함수지만 seurat object에서 호출하면 다르게 처리하는 것, 이를 S4 Method라 함.
+colnames(오브젝트 명)를 하면 Cell Barcode가 나옴.
+
+nFeature_RNA: 특정 셀에서 발현이 검출된 유전자 종류 수
+nCount_RNA: 특정 셀의 총 RNA 분자 수(UMI로 보정됨)
+
+dot이 너무 많아 VlnPlot이 잘 안보일 때는 pt.size = 0를 넣으면 됨.
+
+NormalizeData의 기본값은 아래와 같다.
+NormalizeData(데이터 이름, normalization.method = "LogNormalize", scale.factor = 10000)
+
+Log Normalization은 seurat에서 기본적으로 사용하는 표준화 방법이다.
+Gene간 발현량 차이는 매우 극적이기 때문에 그 값을 그대로 사용한다면
+차이가 매우 큰 유전자에 나머지 유전자가 묻힐 수 있어 로그를 씌워 보정한다.
+그러면 숫자가 너무 작아지기 때문에 10^4를 곱해 적당한 크기의 숫자로 만든다.
+그러나 사실 생물학적으로 유전자 발현이 log-normal distribution을 따른다는 근거는 없다.
+예전부터(Microarry) Log transform을 관습적으로 사용하고 있다.
+실제로는 negative binomial distribution에 가깝고 하고 그것을 적용한 SCTransform 같은 것도 있다.
+다만 SCTransform이나 Log transform이나 그 차이가 그렇게 크지 않다고 한다.
+
+Scaling
+all.genes <- rownames(pbmc)
+pbmc <- ScaleData(pbmc, features = all.genes)가 기본적인 Scaling
+feature = all.genes를 넣는 이유는 기본값은 VST분석으로 얻은 variable features 2000개에 대해서만
+Scaling을 하는데 나중에 Heatmap을 그리거나 할 때 다른 유전자도 필요한 경우가 있어서 전부 Scaling함.
+
+pbmc <- ScaleData(pbmc, vars.to.regress = "percent.mt")
+이렇게 할 시 variable features에 대해 scaling하고 percent.mt에 대해서는 선형변환을 해
+percent.mt에 의해 변하는 발현량 차이를 제거한다.
+xᵢⱼ = β₀ + β₁ · percent.mtⱼ + εᵢⱼ
+여기서 잔차인 εᵢⱼ만 남겨 percent.mtⱼ로 설명되는 발현량 차이를 제거한다.
+Cell cycle regression도 같은 원리, 그러나 앞에서와 마찬가지로 mt.percent에 따른 발현량 차이가
+Linear하지 않기 때문에 최근에는 SCTransform을 권장한다.
+
+percent.mt가 높은 cell은 죽어가는 cell인데, 이 자체로 생물학적인 의미가 있을 수도 있다.
+ex) 항암제 처리 후 얻은 데이터
+Cell cycle 역시 Proliferation과 직결되기 때문에 regression을 하면 많은 정보를 잃을 수 있다.
+따라서, regression은 clustering이 잘 안될때만 적용하는 것이 좋다.
+
+PCA
+scRNAseq은 매우 다양한 종류의 Cell이 담겨 있기 때문에 PC1, PC2만으로 평면에 차원 축소를 한다고 해서
+크게 의미있는 Clustering을 할 수 없다.
+PCA는 PC를 분리해 UMAP과 같은 다른 차원 축소 알고리즘의 입력값으로 쓰기 위해 한다.
+2000개 variable features를 통째로 UMAP에 넣으면 연산량이 너무 많기 때문에 Weights의 집합인 PC로 쪼개고
+상위 PC들이 cell type 간 주요 변동을 담고 하위 PC들이 미세한 차이나 noise를 담고 있다는 점을 이용해
+ElbowPlot 등을 사용하고 적당한 개수의 PC를 선택해 차원을 축소한다.
+추가로, PC를 GSEA하면 각 PC가 어떤 차이를 설명하는지 알아낼 수 있다.
+
+PCA 분석을 하면 차원을 크게 줄일 수 있기 때문에 차원의 저주를 피해 향후 클러스터링에서
+유클리드 거리를 활용할 수 있다.
+처음 수만개 차원 -> VST -> 2000개 차원 -> PCA -> 20개 미만 차원
+
+Clustering
+FindNeighbors(데이터 이름, dims = 1:n)
+n개의 PC를 사용한다는 의미
+RunUMAP(데이터 이름, dims = 1:n)
+n개의 PC를 사용해 UMAP으로 2차원에 표현
+RunUMAP은 단순히 FindClusters로 뽑은 Cluster를 표현하는 것이 아니라 자체적인 알고리즘으로
+neighbor graph를 구축하고 2차원 거리로 표현한다.
+따라서 RunUMAP도 사용할 차원의 수(PC의 수)를 지정해야 한다.
+RunUMAP과 FindNeighbors의 차원 수는 달라도 분석에 지장은 없지만 UMAP에서 눈으로 보이는 클러스터와
+데이터에 라벨링된 클러스터가 크게 다를 수 있다.
+CellSelector 함수를 쓰면 UMAP을 기준으로 해 Cluster를 지정할 수도 있지만 UMAP 자체가 왜곡이
+있기 때문에 적절한 방법이 아니다.
+
+혹은 PCA가 아닌 FindNeighbors에서 만든 그래프를 UMAP의 입력으로 쓸 수도 있다.(graph = "RNA_snn")
+이 경우 UMAP에서 보이는 클러스터와 라벨링된 클러스터가 항상 일치한다.
+
+dims (FindNeighbors) vs resolution (FindClusters)
+두 파라미터 모두 얼마나 자세히 Cluster를 나눌지를 조절할 수 있으나 의미에 차이가 있다.
+dims를 조절하는 것은 셀 간 유사성 계산에 활용할 정보의 양이 달라지고 그래프가 달라진다.
+많은 PC를 사용할수록 더 미묘한 차이까지 포함하지만 노이즈가 담긴 PC까지 넣으면 정보가 오염될 수 있다.
+resolution은 정보와 그래프는 그대로 두고 그 그래프를 얼마나 잘게 자를지만 결정한다.
+여기서 말하는 그래프는 SNN graph인데, 2D에 그릴 순 있으나 셀이 수만 개이고 각 셀이 20개의 이웃과
+연결되어 있으면 edge(연걸선)가 수십만 개이기 때문에 아무 의미가 없다.
