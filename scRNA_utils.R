@@ -80,6 +80,11 @@ utils_run_singleR_annotation <- function(seurat_obj, ref_data) {
 utils_save_all_markers <- function(
   seurat_obj, output_csv, logfc_threshold = 0.5
 ) {
+  # PrepSCTFindMarkers is required for SCTransform normalized data
+  if (DefaultAssay(seurat_obj) == "SCT") {
+    seurat_obj <- PrepSCTFindMarkers(seurat_obj)
+  }
+
   all_markers <- FindAllMarkers(
     seurat_obj,
     only.pos = TRUE,

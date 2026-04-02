@@ -3,6 +3,7 @@ library(Seurat)
 library(patchwork)
 library(celldex)
 library(ggplot2)
+library(presto)
 
 source("scRNA_utils.R")
 
@@ -35,7 +36,7 @@ CRPC1 <- CellCycleScoring(CRPC1, s.features = s.genes, g2m.features = g2m.genes)
 # Draw on UMAP & Save
 p <- DimPlot(CRPC1, group.by = "Phase", pt.size = 0.3)
 ggsave(
-  "CRPC1/CellCycle_Phase_UMAP.tiff",
+  "Results/CRPC1/CellCycle_Phase_UMAP.tiff",
   plot = p,
   width = 10, height = 7, dpi = 300
 )
@@ -46,7 +47,7 @@ CRPC1 <- utils_run_singleR_annotation(CRPC1, ref_data = ref)
 # Draw UMAP & Save
 p <- DimPlot(CRPC1, group.by = "celltype", label = TRUE, repel = TRUE)
 ggsave(
-  "CRPC1/SingleR_Annotations.tiff",
+  "Results/CRPC1/SingleR_Annotations.tiff",
   plot = p,
   width = 15, height = 7, dpi = 300
 )
@@ -60,14 +61,14 @@ p <- FeaturePlot(CRPC1,
   ncol = 4, pt.size = 0.1
 )
 ggsave(
-  "CRPC1/Annotation_Markers.tiff",
+  "Results/CRPC1/Annotation_Markers.tiff",
   plot = p,
   width = 10, height = 7, dpi = 300
 )
 # Find Markers & Save
 all_markers <- utils_save_all_markers(
   CRPC1,
-  output_csv = "CRPC1/CRPC1_all_markers.csv",
+  output_csv = "Results/CRPC1/CRPC1_all_markers.csv",
   logfc_threshold = 0.5
 )
 
@@ -90,7 +91,7 @@ CRPC1 <- RenameIdents(
 )
 p <- DimPlot(CRPC1, reduction = "umap", label = TRUE)
 ggsave(
-  "CRPC1/SingleR_Annotations.tiff",
+  "Results/CRPC1/SingleR_Annotations.tiff",
   plot = p,
   width = 10, height = 7, dpi = 300
 )
