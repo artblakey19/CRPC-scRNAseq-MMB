@@ -215,3 +215,5 @@ saveRDS(epi, "Results/epi.rds")
 # Read RDS
 combined_CRPC <- readRDS("Results/combined_CRPC.rds")
 epi <- readRDS("Results/epi.rds")
+
+utils_run_cluster_gsea(epi, "Results/Epithelial/Epithelial_gsea.xlsx")
