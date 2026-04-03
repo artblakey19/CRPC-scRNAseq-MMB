@@ -4,10 +4,15 @@
 # Normalization, VST, Scale, PCA: utils_run_standard_preprocessing()
 # SingleR Annotation: utils_run_singleR_annotation()
 # Find and Save All Markers: utils_save_all_markers()
+# GSEA by cluster: utils_run_cluster_gsea()
 
 library(Seurat)
 library(SingleR)
 library(SingleCellExperiment)
+library(clusterProfiler)
+library(msigdbr)
+library(openxlsx)
+library(future.apply)
 
 # Load & QC ----
 #' 1. Load & QC
@@ -92,4 +97,123 @@ utils_save_all_markers <- function(
   )
   write.csv(all_markers, file = output_csv, row.names = FALSE)
   return(all_markers)
+}
+
+# GSEA by cluster ----
+#' 5. GSEA by cluster (Hallmark, KEGG_MEDICUS, GO:BP)
+#' @param seurat_obj A Seurat object with clustering results
+#' @param output_xlsx Path to save the GSEA results Excel file
+#' @param ident Column name for cluster identity (default: active ident)
+#' @param species "Homo sapiens" or "Mus musculus"
+#' @param pval_cutoff P-value cutoff for GSEA results (default: 0.05)
+#' @return Invisibly returns a list of GSEA result data frames per collection
+utils_run_cluster_gsea <- function(
+  seurat_obj,
+  output_xlsx,
+  ident = NULL,
+  species = "Homo sapiens",
+  pval_cutoff = 0.05
+) {
+  # Set identity if specified
+  if (!is.null(ident)) {
+    Idents(seurat_obj) <- ident
+  }
+
+  # PrepSCTFindMarkers for SCT assay
+  if (DefaultAssay(seurat_obj) == "SCT") {
+    seurat_obj <- PrepSCTFindMarkers(seurat_obj)
+  }
+
+  # Retrieve gene set collections from msigdbr
+  hallmark_df <- msigdbr(species = species, category = "H")
+  kegg_med_df <- msigdbr(species = species, category = "C2", subcategory = "CP:KEGG_MEDICUS")
+  gobp_df <- msigdbr(species = species, category = "C5", subcategory = "GO:BP")
+
+  collections <- list(
+    Hallmark     = hallmark_df[, c("gs_name", "gene_symbol")],
+    KEGG_MEDICUS = kegg_med_df[, c("gs_name", "gene_symbol")],
+    GO_BP        = gobp_df[, c("gs_name", "gene_symbol")]
+  )
+
+  clusters <- sort(unique(Idents(seurat_obj)))
+  message(
+    "Running GSEA for ", length(clusters), " clusters x ",
+    length(collections), " collections..."
+  )
+
+  # Parallel GSEA per cluster via future.apply
+  # (inherits plan() set by the user, e.g. plan("multicore", workers = 30))
+  cluster_results <- future_lapply(clusters, function(cl) {
+    message("  Cluster: ", cl)
+
+    # DEG: cluster vs all others → ranked gene list by avg_log2FC
+    markers <- FindMarkers(
+      seurat_obj,
+      ident.1 = cl,
+      min.pct = 0.1,
+      logfc.threshold = 0,
+      only.pos = FALSE
+    )
+    gene_rank <- setNames(markers$avg_log2FC, rownames(markers))
+    gene_rank <- sort(gene_rank, decreasing = TRUE)
+
+    res_per_coll <- list()
+    for (coll_name in names(collections)) {
+      gs <- collections[[coll_name]]
+
+      gsea_res <- tryCatch(
+        {
+          res <- GSEA(
+            geneList = gene_rank,
+            TERM2GENE = gs,
+            pvalueCutoff = pval_cutoff,
+            pAdjustMethod = "BH",
+            minGSSize = 10,
+            maxGSSize = 500,
+            verbose = FALSE
+          )
+          as.data.frame(res)
+        },
+        error = function(e) {
+          message(
+            "    [", coll_name, "] No significant results or error: ",
+            conditionMessage(e)
+          )
+          data.frame()
+        }
+      )
+
+      if (nrow(gsea_res) > 0) {
+        gsea_res$cluster <- cl
+        gsea_res <- gsea_res[, c("cluster", setdiff(names(gsea_res), "cluster"))]
+      }
+      res_per_coll[[coll_name]] <- gsea_res
+    }
+    return(res_per_coll)
+  }, future.seed = TRUE)
+
+  # Merge parallel results
+  results_list <- list(
+    Hallmark     = data.frame(),
+    KEGG_MEDICUS = data.frame(),
+    GO_BP        = data.frame()
+  )
+  for (cr in cluster_results) {
+    for (coll_name in names(results_list)) {
+      if (nrow(cr[[coll_name]]) > 0) {
+        results_list[[coll_name]] <- rbind(results_list[[coll_name]], cr[[coll_name]])
+      }
+    }
+  }
+
+  # Write to Excel: one sheet per collection
+  wb <- createWorkbook()
+  for (sheet_name in names(results_list)) {
+    addWorksheet(wb, sheet_name)
+    writeData(wb, sheet_name, results_list[[sheet_name]])
+  }
+  saveWorkbook(wb, output_xlsx, overwrite = TRUE)
+  message("GSEA results saved to: ", output_xlsx)
+
+  invisible(results_list)
 }
