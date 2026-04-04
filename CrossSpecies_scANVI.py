@@ -10,11 +10,17 @@ import numpy as np
 sc.settings.figdir = "Results/Cross_Species"
 scvi.settings.seed = 42
 
-# Load data exported from R
-adata = sc.read_h5ad("Results/Cross_Species/combined_for_scanvi.h5ad")
+# Load data exported from R (mtx + metadata)
+from scipy.io import mmread
 
-# Ensure raw counts are used (scVI/scANVI require counts)
-adata.X = adata.X.astype(int)
+counts = mmread("Results/Cross_Species/scanvi_counts.mtx").T.tocsr()
+genes = pd.read_csv("Results/Cross_Species/scanvi_genes.txt", header=None)[0].values
+barcodes = pd.read_csv("Results/Cross_Species/scanvi_barcodes.txt", header=None)[0].values
+metadata = pd.read_csv("Results/Cross_Species/scanvi_metadata.csv", index_col=0)
+
+adata = sc.AnnData(X=counts, obs=metadata)
+adata.var_names = genes
+adata.obs_names = barcodes
 
 # Basic filtering
 sc.pp.filter_genes(adata, min_cells=10)
@@ -65,6 +71,9 @@ sc.pp.neighbors(adata, use_rep="X_scANVI")
 sc.tl.umap(adata)
 sc.tl.leiden(adata, resolution=0.5, key_added="leiden_scanvi")
 
+# Save trained model and data
+adata.write("Results/Cross_Species/combined_scANVI.h5ad")
+
 # Visualizations ----
 fig_kw = dict(dpi=300, bbox_inches="tight")
 
@@ -88,7 +97,7 @@ samples = ["CRPC1", "CRPC2", "CRPC3", "DoubleTg", "TripleTg"]
 fig, axes = plt.subplots(1, 5, figsize=(28, 6))
 for ax, s in zip(axes, samples):
     mask = adata.obs["sample"] == s
-    sc.pl.umap(adata, ax=ax, show=False, na_color="grey90", size=5)
+    sc.pl.umap(adata, ax=ax, show=False, na_color="lightgray", size=5)
     sc.pl.umap(
         adata[mask],
         color="leiden_scanvi",
@@ -147,9 +156,6 @@ comp.to_csv("Results/Cross_Species/scANVI_cluster_composition.csv")
 
 pred_comp = pd.crosstab(adata.obs["sample"], adata.obs["scanvi_prediction"])
 pred_comp.to_csv("Results/Cross_Species/scANVI_prediction_by_sample.csv")
-
-# Save
-adata.write("Results/Cross_Species/combined_scANVI.h5ad")
 
 print("\n=== scANVI Prediction Summary ===")
 print(pred_comp)

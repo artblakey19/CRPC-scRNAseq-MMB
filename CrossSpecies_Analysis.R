@@ -434,6 +434,10 @@ combined_for_scanvi$scanvi_label <- ifelse(
     "Unknown"
 )
 
-library(SeuratDisk)
-SaveH5Seurat(combined_for_scanvi, filename = "Results/Cross_Species/combined_for_scanvi.h5Seurat")
-Convert("Results/Cross_Species/combined_for_scanvi.h5Seurat", dest = "h5ad")
+# Export counts + metadata for Python
+combined_for_scanvi[["RNA"]] <- JoinLayers(combined_for_scanvi[["RNA"]])
+counts_mat <- LayerData(combined_for_scanvi, assay = "RNA", layer = "counts")
+Matrix::writeMM(counts_mat, "Results/Cross_Species/scanvi_counts.mtx")
+writeLines(rownames(counts_mat), "Results/Cross_Species/scanvi_genes.txt")
+writeLines(colnames(counts_mat), "Results/Cross_Species/scanvi_barcodes.txt")
+write.csv(combined_for_scanvi@meta.data, "Results/Cross_Species/scanvi_metadata.csv")
