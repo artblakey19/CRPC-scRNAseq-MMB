@@ -146,50 +146,62 @@ ggsave("Results/Epithelial/Comparison_UMAP_by_patient.png",
 )
 
 # ============================================================
-# Downstream Analysis (SCT + CCA) ----
+# Downstream Analysis (all methods) ----
 # ============================================================
-
-# Cell Cycle Identification ----
 s.genes <- cc.genes.updated.2019$s.genes
 g2m.genes <- cc.genes.updated.2019$g2m.genes
-epi_sct_cca <- CellCycleScoring(epi_sct_cca, s.features = s.genes, g2m.features = g2m.genes)
-p <- DimPlot(epi_sct_cca, group.by = "Phase", pt.size = 0.3)
-ggsave("Results/Epithelial/SCT_CCA_CellCycle_UMAP.tiff",
-    plot = p, width = 10, height = 7, dpi = 300
+
+methods <- list(
+    list(obj = epi_sct_cca, tag = "SCT_CCA"),
+    list(obj = epi_log_harmony, tag = "LogNorm_Harmony"),
+    list(obj = epi_log_cca, tag = "LogNorm_CCA")
 )
 
-# UMAP split by patient
-p <- DimPlot(epi_sct_cca, split.by = "orig.ident", label = TRUE, pt.size = 0.3)
-ggsave("Results/Epithelial/SCT_CCA_UMAP_by_patient.png",
-    plot = p, width = 24, height = 8
-)
+for (m in methods) {
+    obj <- m$obj
+    tag <- m$tag
 
-# Epithelial marker FeaturePlot ----
+    # Cell Cycle Identification
+    obj <- CellCycleScoring(obj, s.features = s.genes, g2m.features = g2m.genes)
+    p <- DimPlot(obj, group.by = "Phase", pt.size = 0.3)
+    ggsave(paste0("Results/Epithelial/", tag, "_CellCycle_UMAP.tiff"),
+        plot = p, width = 10, height = 7, dpi = 300
+    )
 
-# Luminal/Basal, Club markers
-p <- FeaturePlot(epi_sct_cca,
-    features = c(
-        "FOXA1", "HOXB13", "NKX3-1", "KLK3", "TOP2A", "MKI67", # Luminal
-        "KRT5", "KRT14", "TP63", # Basal
-        "MMP7", "WFDC2" # Club
-    ),
-    ncol = 4, pt.size = 0.1
-)
-ggsave("Results/Epithelial/SCT_CCA_Luminal_Basal_Club_FeaturePlot.png",
-    plot = p, width = 20, height = 16
-)
+    # UMAP split by patient
+    p <- DimPlot(obj, split.by = "orig.ident", label = TRUE, pt.size = 0.3)
+    ggsave(paste0("Results/Epithelial/", tag, "_UMAP_by_patient.png"),
+        plot = p, width = 24, height = 8
+    )
 
-# DNPC-related markers
-p <- FeaturePlot(epi_sct_cca,
-    features = c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR"),
-    ncol = 4, pt.size = 0.1
-)
-ggsave("Results/Epithelial/SCT_CCA_DNPC_FeaturePlot.png",
-    plot = p, width = 20, height = 16
-)
+    # Luminal/Basal, Club markers
+    p <- FeaturePlot(obj,
+        features = c(
+            "FOXA1", "HOXB13", "NKX3-1", "KLK3", "TOP2A", "MKI67", # Luminal
+            "KRT5", "KRT14", "TP63", # Basal
+            "MMP7", "WFDC2" # Club
+        ),
+        ncol = 4, pt.size = 0.1
+    )
+    ggsave(paste0("Results/Epithelial/", tag, "_Luminal_Basal_Club_FeaturePlot.png"),
+        plot = p, width = 20, height = 16
+    )
 
-# Find all markers ----
-utils_save_all_markers(epi_sct_cca, "Results/Epithelial/SCT_CCA_all_markers.csv")
+    # DNPC-related markers
+    p <- FeaturePlot(obj,
+        features = c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR"),
+        ncol = 4, pt.size = 0.1
+    )
+    ggsave(paste0("Results/Epithelial/", tag, "_DNPC_FeaturePlot.png"),
+        plot = p, width = 20, height = 16
+    )
+
+    # Find all markers
+    utils_save_all_markers(obj, paste0("Results/Epithelial/", tag, "_all_markers.csv"))
+
+    # Update the object back (for CellCycleScoring results)
+    assign(paste0("epi_", tolower(gsub("_", "_", tag))), obj)
+}
 
 # Save RDS ----
 saveRDS(epi_sct_cca, "Results/Epithelial/epi_SCT_CCA.rds")

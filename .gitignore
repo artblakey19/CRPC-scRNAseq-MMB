@@ -8,7 +8,7 @@ R script/
 *.Rproj
 
 # rds data
-.rds
+*.rds
 
 # h5ad data
-.h5ad
+*.h5ad
