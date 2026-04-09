@@ -9,3 +9,6 @@ R script/
 
 # rds data
 .rds
+
+# h5ad data
+.h5ad

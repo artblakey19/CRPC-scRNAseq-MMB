@@ -20,7 +20,7 @@ dir.create("Results/Cross_Species", recursive = TRUE, showWarnings = FALSE)
 
 # Load Data ----
 # Human integrated epithelial (Three patients: CRPC1/2/3)
-human_epi <- readRDS("Results/epi.rds")
+human_epi <- readRDS("Results/Epithelial/epi_SCT_CCA.rds")
 
 # Mouse integrated epithelial (DoubleTg + TripleTg)
 # Rebuild epi2 with EpiCellTypes if not already saved
@@ -229,6 +229,92 @@ ggsave("Results/Cross_Species/UMAP_LogNorm_CCA_overview.png",
 )
 ggsave("Results/Cross_Species/UMAP_LogNorm_CCA_split_by_sample.png",
     p8,
+    width = 28, height = 7, dpi = 300
+)
+
+# SCTransform + Harmony Integration ----
+sct_harmony_list <- list(
+    human = SCTransform(human_sub,
+        vars.to.regress = c("S.Score", "G2M.Score"),
+        verbose = FALSE
+    ),
+    mouse = SCTransform(mouse_sub,
+        vars.to.regress = c("S.Score", "G2M.Score"),
+        verbose = FALSE
+    )
+)
+sct_harmony_hvg <- SelectIntegrationFeatures(sct_harmony_list)
+
+CombinedEpi_SCT_Harmony <- merge(sct_harmony_list$human, sct_harmony_list$mouse,
+    project = "CombinedEpi_SCT_Harmony"
+)
+VariableFeatures(CombinedEpi_SCT_Harmony) <- sct_harmony_hvg
+CombinedEpi_SCT_Harmony <- RunPCA(CombinedEpi_SCT_Harmony, features = sct_harmony_hvg)
+
+p_elbow_sct_harmony <- ElbowPlot(CombinedEpi_SCT_Harmony, ndims = 50) +
+    ggtitle("SCT+Harmony Elbow Plot")
+ggsave("Results/Cross_Species/ElbowPlot_SCT_Harmony.png",
+    p_elbow_sct_harmony,
+    width = 7, height = 5, dpi = 300
+)
+
+CombinedEpi_SCT_Harmony <- RunHarmony(CombinedEpi_SCT_Harmony,
+    group.by.vars = "species",
+    theta = 4, max.iter.harmony = 30
+)
+
+CombinedEpi_SCT_Harmony <- RunUMAP(CombinedEpi_SCT_Harmony,
+    reduction = "harmony", dims = 1:30
+)
+CombinedEpi_SCT_Harmony <- FindNeighbors(CombinedEpi_SCT_Harmony,
+    reduction = "harmony", dims = 1:30
+)
+CombinedEpi_SCT_Harmony <- FindClusters(CombinedEpi_SCT_Harmony, resolution = 0.5)
+
+# Create unified sample label
+CombinedEpi_SCT_Harmony$sample <- ifelse(
+    CombinedEpi_SCT_Harmony$species == "Human",
+    CombinedEpi_SCT_Harmony$orig.ident,
+    ifelse(CombinedEpi_SCT_Harmony$stim == "Double", "DoubleTg", "TripleTg")
+)
+CombinedEpi_SCT_Harmony$sample <- factor(
+    CombinedEpi_SCT_Harmony$sample,
+    levels = c("CRPC1", "CRPC2", "CRPC3", "DoubleTg", "TripleTg")
+)
+
+# SCT+Harmony UMAP Visualization
+p_sh1 <- DimPlot(CombinedEpi_SCT_Harmony,
+    group.by = "species", cols = c("Human" = "#E64B35", "Mouse" = "#4DBBD5")
+) +
+    ggtitle("SCT+Harmony: Species") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+p_sh2 <- DimPlot(CombinedEpi_SCT_Harmony,
+    group.by = "seurat_clusters",
+    label = TRUE, repel = TRUE
+) +
+    ggtitle("SCT+Harmony: Clusters") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+p_sh3 <- DimPlot(CombinedEpi_SCT_Harmony,
+    group.by = "sample", cols = sample_cols
+) +
+    ggtitle("SCT+Harmony: Samples") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+p_sh4 <- DimPlot(CombinedEpi_SCT_Harmony,
+    split.by = "sample", group.by = "seurat_clusters",
+    label = TRUE, repel = TRUE, ncol = 5
+) +
+    ggtitle("SCT+Harmony: Clusters by Sample") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("Results/Cross_Species/UMAP_SCT_Harmony_overview.png",
+    p_sh1 + p_sh2 + p_sh3 + plot_layout(ncol = 3),
+    width = 24, height = 7, dpi = 300
+)
+ggsave("Results/Cross_Species/UMAP_SCT_Harmony_split_by_sample.png",
+    p_sh4,
     width = 28, height = 7, dpi = 300
 )
 

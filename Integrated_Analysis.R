@@ -35,7 +35,7 @@ p <- VlnPlot(combined_CRPC_raw,
     features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
     group.by = "orig.ident", ncol = 3, pt.size = 0
 )
-ggsave("Results/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8)
+ggsave("Results/QC/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8)
 
 # FeatureScatter plot - separate panels for each patient (P1, P2, P3)
 split_obj <- SplitObject(combined_CRPC_raw, split.by = "orig.ident")
@@ -45,7 +45,7 @@ scatter_plots <- lapply(names(split_obj), function(sample) {
     p1 + p2
 })
 combined_scatter <- wrap_plots(scatter_plots, ncol = 1)
-ggsave("Results/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15)
+ggsave("Results/QC/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15)
 
 # Filter
 combined_CRPC <- subset(combined_CRPC_raw,
@@ -58,7 +58,7 @@ combined_CRPC <- subset(combined_CRPC_raw,
 combined_CRPC <- SCTransform(combined_CRPC, verbose = FALSE)
 combined_CRPC <- RunPCA(combined_CRPC, verbose = FALSE)
 # Draw elbow plot
-ggsave("Results/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15)
+ggsave("Results/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15)
 
 # Integration ----
 # CCA Integration
@@ -84,7 +84,7 @@ combined_CRPC <- CellCycleScoring(combined_CRPC, s.features = s.genes, g2m.featu
 # Draw on UMAP & Save
 p <- DimPlot(combined_CRPC, group.by = "Phase", pt.size = 0.3)
 ggsave(
-    "Results/CellCycle_Phase_UMAP.tiff",
+    "Results/Integrated/CellCycle_Phase_UMAP.tiff",
     plot = p,
     width = 10, height = 7, dpi = 300
 )
@@ -98,10 +98,10 @@ p <- FeaturePlot(combined_CRPC,
     ),
     ncol = 4, pt.size = 0.1
 )
-ggsave("Results/FeaturePlot_markers.png", plot = p, width = 20, height = 15)
+ggsave("Results/Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 15)
 
 # Find all markers
-utils_save_all_markers(combined_CRPC, "Results/all_markers.csv")
+utils_save_all_markers(combined_CRPC, "Results/Integrated/all_markers.csv")
 
 # Label Annotation
 combined_CRPC <- RenameIdents(
@@ -129,91 +129,13 @@ combined_CRPC$celltype <- Idents(combined_CRPC)
 
 # Save labelled UMAP
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE)
-ggsave("Results/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15)
+ggsave("Results/Integrated/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15)
 
 # Save labelled UMAP by patient
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", split.by = "orig.ident", label = TRUE)
-ggsave("Results/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15)
-
-# Epithelial Reclustering ----
-epi <- subset(combined_CRPC, subset = celltype == "Epithelial")
-
-# Split by patient for re-batch correction
-epi[["RNA"]] <- split(epi[["RNA"]], f = epi$orig.ident)
-
-# Re-run SCTransform on the subset
-epi <- SCTransform(epi, verbose = FALSE)
-epi <- RunPCA(epi, verbose = FALSE)
-
-# Elbow plot for epithelial subset
-ggsave("Results/Epithelial/Epithelial_ElbowPlot.png", plot = ElbowPlot(epi, ndims = 50), width = 12, height = 8)
-
-# Re-integrate across patients
-epi <- IntegrateLayers(
-    object = epi,
-    method = CCAIntegration,
-    normalization.method = "SCT",
-    verbose = FALSE
-)
-epi[["RNA"]] <- JoinLayers(epi[["RNA"]])
-
-# Clustering
-epi <- FindNeighbors(epi, reduction = "integrated.dr", dims = 1:30)
-epi <- FindClusters(epi, resolution = 0.6)
-epi <- RunUMAP(epi,
-    reduction = "integrated.dr", dims = 1:30,
-    n.neighbors = 20, min.dist = 0.1, spread = 4.0
-)
-
-# Cell Cycle Identification(Epi) ----
-s.genes <- cc.genes.updated.2019$s.genes
-g2m.genes <- cc.genes.updated.2019$g2m.genes
-# Cell cycle scoring
-epi <- CellCycleScoring(epi, s.features = s.genes, g2m.features = g2m.genes)
-# Draw on UMAP & Save
-p <- DimPlot(epi, group.by = "Phase", pt.size = 0.3)
-ggsave(
-    "Results/Epithelial/Epithelial_CellCycle_UMAP.tiff",
-    plot = p,
-    width = 10, height = 7, dpi = 300
-)
-
-# UMAP visualization
-p <- DimPlot(epi, reduction = "umap", label = TRUE, pt.size = 0.3)
-ggsave("Results/Epithelial/Epithelial_UMAP.png", plot = p, width = 10, height = 8)
-
-# UMAP split by patient
-p <- DimPlot(epi, reduction = "umap", split.by = "orig.ident", label = TRUE, pt.size = 0.3)
-ggsave("Results/Epithelial/Epithelial_UMAP_by_patient.png", plot = p, width = 24, height = 8)
-
-# Epithelial marker FeaturePlot
-
-# Luminal/Basal, Club markers
-p <- FeaturePlot(epi,
-    features = c(
-        "FOXA1", "HOXB13", "NKX3-1", "KLK3", "TOP2A", "MKI67", # Luminal
-        "KRT5", "KRT14", "TP63", # Basal
-        "MMP7", "WFDC2" # Club
-    ),
-    ncol = 4, pt.size = 0.1
-)
-ggsave("Results/Epithelial/Luminal_Basal_Club_FeaturePlot_markers.png", plot = p, width = 20, height = 16)
-
-# DNPC-related markers
-p <- FeaturePlot(epi,
-    features = c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR"),
-    ncol = 4, pt.size = 0.1
-)
-ggsave("Results/Epithelial/DNPC_FeaturePlot_markers.png", plot = p, width = 20, height = 16)
-
-# Find all markers for epithelial subclusters
-utils_save_all_markers(epi, "Results/Epithelial/Epithelial_all_markers.csv")
+ggsave("Results/Integrated/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15)
 
 # Save RDS ----
-saveRDS(combined_CRPC, "Results/combined_CRPC.rds")
-saveRDS(epi, "Results/epi.rds")
+saveRDS(combined_CRPC, "Results/Integrated/combined_CRPC.rds")
 # Read RDS
-combined_CRPC <- readRDS("Results/combined_CRPC.rds")
-epi <- readRDS("Results/epi.rds")
-
-utils_run_cluster_gsea(epi, "Results/Epithelial/Epithelial_gsea.xlsx")
+# combined_CRPC <- readRDS("Results/Integrated/combined_CRPC.rds")
