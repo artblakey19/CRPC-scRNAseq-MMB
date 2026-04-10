@@ -162,7 +162,7 @@ for (m in methods) {
     tag <- m$tag
 
     # Cell Cycle Identification
-    obj <- CellCycleScoring(obj, s.features = s.genes, g2m.features = g2m.genes)
+    obj <- CellCycleScoring(obj, s.features = s.genes, g2m.features = g2m.genes, nbin = 12)
     p <- DimPlot(obj, group.by = "Phase", pt.size = 0.3)
     ggsave(paste0("Results/Epithelial/", tag, "_CellCycle_UMAP.tiff"),
         plot = p, width = 10, height = 7, dpi = 300
@@ -174,33 +174,40 @@ for (m in methods) {
         plot = p, width = 24, height = 8
     )
 
-    # Luminal/Basal, Club markers
-    p <- FeaturePlot(obj,
-        features = c(
-            "FOXA1", "HOXB13", "NKX3-1", "KLK3", "TOP2A", "MKI67", # Luminal
-            "KRT5", "KRT14", "TP63", # Basal
-            "MMP7", "WFDC2" # Club
-        ),
-        ncol = 4, pt.size = 0.1
+    # Marker gene sets
+    luminal_basal_club <- c(
+        "FOXA1", "HOXB13", "NKX3-1", "KLK3", "TOP2A", "MKI67", # Luminal
+        "KRT5", "KRT14", "TP63", # Basal
+        "MMP7", "WFDC2" # Club
     )
+    dnpc_markers <- c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR")
+
+    # Luminal/Basal, Club — FeaturePlot
+    p <- FeaturePlot(obj, features = luminal_basal_club, ncol = 4, pt.size = 0.1)
     ggsave(paste0("Results/Epithelial/", tag, "_Luminal_Basal_Club_FeaturePlot.png"),
         plot = p, width = 20, height = 16
     )
 
-    # DNPC-related markers
-    p <- FeaturePlot(obj,
-        features = c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR"),
-        ncol = 4, pt.size = 0.1
+    # Luminal/Basal, Club — DotPlot
+    p <- DotPlot(obj, features = luminal_basal_club) + RotatedAxis()
+    ggsave(paste0("Results/Epithelial/", tag, "_Luminal_Basal_Club_DotPlot.png"),
+        plot = p, width = 14, height = 8
     )
+
+    # DNPC — FeaturePlot
+    p <- FeaturePlot(obj, features = dnpc_markers, ncol = 4, pt.size = 0.1)
     ggsave(paste0("Results/Epithelial/", tag, "_DNPC_FeaturePlot.png"),
         plot = p, width = 20, height = 16
     )
 
+    # DNPC — DotPlot
+    p <- DotPlot(obj, features = dnpc_markers) + RotatedAxis()
+    ggsave(paste0("Results/Epithelial/", tag, "_DNPC_DotPlot.png"),
+        plot = p, width = 12, height = 8
+    )
+
     # Find all markers
     utils_save_all_markers(obj, paste0("Results/Epithelial/", tag, "_all_markers.csv"))
-
-    # Update the object back (for CellCycleScoring results)
-    assign(paste0("epi_", tolower(gsub("_", "_", tag))), obj)
 }
 
 # Save RDS ----
