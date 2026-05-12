@@ -99,6 +99,64 @@ ggsave("Results/Epithelial/UMAP_split_by_patient.png",
 )
 
 # ============================================================
+# copyKAT malignant overlay ----
+# ============================================================
+# Overlay copyKAT predictions (aneuploid/diploid/not.defined) inherited
+# from the parent integrated object onto the reclustered epithelial UMAP.
+# Clusters with high aneuploid fraction are malignant subclusters.
+copykat_cols <- c(
+    "aneuploid" = "#D7261E", "diploid" = "#1F77B4", "not.defined" = "grey80"
+)
+
+p_pred <- DimPlot(epi,
+    group.by = "copykat_prediction", pt.size = 0.3, cols = copykat_cols
+) + ggtitle("copyKAT prediction")
+ggsave("Results/Epithelial/UMAP_copykat_prediction.png",
+    plot = p_pred, width = 10, height = 8
+)
+
+p_pred_split <- DimPlot(epi,
+    group.by = "copykat_prediction", split.by = "orig.ident",
+    pt.size = 0.3, cols = copykat_cols
+)
+ggsave("Results/Epithelial/UMAP_copykat_prediction_by_patient.png",
+    plot = p_pred_split, width = 24, height = 8
+)
+
+# Per-cluster composition table — sort by aneuploid fraction to surface
+# malignant-enriched clusters.
+copykat_cluster_table <- epi@meta.data %>%
+    dplyr::count(seurat_clusters, copykat_prediction, name = "n") %>%
+    tidyr::pivot_wider(
+        names_from = copykat_prediction, values_from = n, values_fill = 0
+    )
+num_cols <- setdiff(names(copykat_cluster_table), "seurat_clusters")
+copykat_cluster_table$total <-
+    rowSums(copykat_cluster_table[, num_cols, drop = FALSE])
+if ("aneuploid" %in% num_cols) {
+    copykat_cluster_table$aneuploid_frac <-
+        copykat_cluster_table$aneuploid / copykat_cluster_table$total
+    copykat_cluster_table <- copykat_cluster_table[
+        order(-copykat_cluster_table$aneuploid_frac),
+    ]
+}
+write.csv(copykat_cluster_table,
+    "Results/Epithelial/copykat_cluster_composition.csv", row.names = FALSE
+)
+
+# Stacked barplot of aneuploid/diploid fractions per cluster
+p_bar <- ggplot(epi@meta.data,
+    aes(x = seurat_clusters, fill = copykat_prediction)
+) +
+    geom_bar(position = "fill") +
+    scale_fill_manual(values = copykat_cols) +
+    labs(x = "Cluster", y = "Proportion", fill = "copyKAT") +
+    theme_classic()
+ggsave("Results/Epithelial/copykat_cluster_barplot.png",
+    plot = p_bar, width = 10, height = 6
+)
+
+# ============================================================
 # Cell cycle scoring ----
 # ============================================================
 s.genes <- cc.genes.updated.2019$s.genes

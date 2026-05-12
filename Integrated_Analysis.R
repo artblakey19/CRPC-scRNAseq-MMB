@@ -362,68 +362,57 @@ combined_CRPC$celltype <- Idents(combined_CRPC)
 # copyKAT CNV inference ----
 # Run per patient on QC-filtered raw RNA counts. Immune cells are used as the
 # same-sample diploid reference.
+copykat_meta_cols <- c(
+    "copykat_prediction", "copykat_sample",
+    "copykat_reference_source", "copykat_reference_n"
+)
+
 if (run_copykat) {
     copykat_samples <- sort(unique(combined_CRPC$orig.ident))
-    copykat_reference_info <- setNames(
-        lapply(copykat_samples, function(sample_id) {
-            select_copykat_reference_cells(
-                seu = combined_CRPC,
-                sample_id = sample_id,
-                reference_celltypes = copykat_reference_celltypes
-            )
-        }),
-        copykat_samples
-    )
 
-    copykat_reference_summary <- bind_rows(lapply(copykat_samples, function(sample_id) {
-        ref_info <- copykat_reference_info[[sample_id]]
-        data.frame(
-            orig.ident = sample_id,
-            copykat_reference_source = ref_info$source,
-            copykat_reference_n = length(ref_info$cells)
+    copykat_runs <- lapply(copykat_samples, function(sample_id) {
+        ref <- select_copykat_reference_cells(
+            seu = combined_CRPC,
+            sample_id = sample_id,
+            reference_celltypes = copykat_reference_celltypes
         )
-    }))
-    write.csv(
-        copykat_reference_summary,
-        "Results/copyKAT/copykat_reference_summary.csv",
-        row.names = FALSE
-    )
-
-    copykat_pred <- bind_rows(lapply(copykat_samples, function(sample_id) {
-        ref_info <- copykat_reference_info[[sample_id]]
-        run_copykat_sample(
+        pred <- run_copykat_sample(
             seu = combined_CRPC,
             sample_id = sample_id,
             output_dir = "Results/copyKAT",
-            normal_cells = ref_info$cells,
-            reference_source = ref_info$source,
+            normal_cells = ref$cells,
+            reference_source = ref$source,
             n_cores = copykat_cores
         )
-    }))
+        list(
+            reference = data.frame(
+                orig.ident = sample_id,
+                copykat_reference_source = ref$source,
+                copykat_reference_n = length(ref$cells)
+            ),
+            prediction = pred
+        )
+    })
 
-    write.csv(copykat_pred, "Results/copyKAT/copykat_predictions_all_samples.csv", row.names = FALSE)
+    copykat_reference_summary <- bind_rows(lapply(copykat_runs, `[[`, "reference"))
+    copykat_pred <- bind_rows(lapply(copykat_runs, `[[`, "prediction"))
 
-    copykat_idx <- match(colnames(combined_CRPC), copykat_pred$cell)
-    combined_CRPC$copykat_prediction <- copykat_pred$copykat_prediction[copykat_idx]
-    combined_CRPC$copykat_sample <- copykat_pred$copykat_sample[copykat_idx]
-    combined_CRPC$copykat_reference_source <- copykat_pred$copykat_reference_source[copykat_idx]
-    combined_CRPC$copykat_reference_n <- copykat_pred$copykat_reference_n[copykat_idx]
+    write.csv(copykat_reference_summary,
+        "Results/copyKAT/copykat_reference_summary.csv", row.names = FALSE
+    )
+    write.csv(copykat_pred,
+        "Results/copyKAT/copykat_predictions_all_samples.csv", row.names = FALSE
+    )
+
+    cell_meta <- data.frame(cell = colnames(combined_CRPC)) %>%
+        dplyr::left_join(copykat_pred, by = "cell")
+    for (col in copykat_meta_cols) combined_CRPC[[col]] <- cell_meta[[col]]
 } else {
-    combined_CRPC$copykat_prediction <- NA_character_
-    combined_CRPC$copykat_sample <- NA_character_
-    combined_CRPC$copykat_reference_source <- NA_character_
-    combined_CRPC$copykat_reference_n <- NA_integer_
+    for (col in copykat_meta_cols) combined_CRPC[[col]] <- NA
 }
 
-copykat_pred_lower <- tolower(combined_CRPC$copykat_prediction)
-combined_CRPC$copykat_malignant <- case_when(
-    copykat_pred_lower == "aneuploid" ~ "malignant",
-    copykat_pred_lower == "diploid" ~ "non-malignant",
-    TRUE ~ "not.defined"
-)
-
 copykat_patient_summary <- combined_CRPC@meta.data %>%
-    count(orig.ident, copykat_prediction, copykat_malignant, name = "n")
+    dplyr::count(orig.ident, copykat_prediction, name = "n")
 write.csv(
     copykat_patient_summary,
     "Results/copyKAT/copykat_patient_summary.csv",
@@ -431,7 +420,7 @@ write.csv(
 )
 
 copykat_cluster_summary <- combined_CRPC@meta.data %>%
-    count(orig.ident, seurat_clusters, copykat_prediction, copykat_malignant, name = "n")
+    dplyr::count(orig.ident, seurat_clusters, copykat_prediction, name = "n")
 write.csv(
     copykat_cluster_summary,
     "Results/copyKAT/copykat_cluster_summary.csv",
@@ -439,63 +428,18 @@ write.csv(
 )
 
 p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "copykat_malignant",
+    reduction = "umap", group.by = "copykat_prediction",
     pt.size = 0.3
 )
-ggsave("Results/copyKAT/copykat_malignant_UMAP.png",
+ggsave("Results/copyKAT/copykat_prediction_UMAP.png",
     plot = p, width = 10, height = 8
 )
 
 p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "copykat_malignant",
+    reduction = "umap", group.by = "copykat_prediction",
     split.by = "orig.ident", pt.size = 0.3
 )
-ggsave("Results/copyKAT/copykat_malignant_UMAP_by_patient.png",
-    plot = p, width = 24, height = 8
-)
-
-copykat_pred_lower <- tolower(combined_CRPC$copykat_prediction)
-combined_CRPC$malignant_status <- case_when(
-    combined_CRPC$celltype == "Epithelial" & copykat_pred_lower == "aneuploid" ~ "Malignant epithelial",
-    combined_CRPC$celltype == "Epithelial" & copykat_pred_lower == "diploid" ~ "Diploid epithelial",
-    combined_CRPC$celltype != "Epithelial" & copykat_pred_lower == "aneuploid" ~ "Aneuploid non-epithelial",
-    combined_CRPC$celltype != "Epithelial" & copykat_pred_lower == "diploid" ~ "Diploid non-epithelial",
-    TRUE ~ "Not defined"
-)
-
-copykat_celltype_summary <- combined_CRPC@meta.data %>%
-    count(orig.ident, celltype, malignant_status, name = "n")
-write.csv(
-    copykat_celltype_summary,
-    "Results/copyKAT/copykat_celltype_summary.csv",
-    row.names = FALSE
-)
-
-copykat_meta <- combined_CRPC@meta.data
-copykat_meta$cell <- rownames(copykat_meta)
-copykat_meta <- copykat_meta[, c("cell", setdiff(colnames(copykat_meta), "cell"))]
-write.csv(
-    copykat_meta[
-        !is.na(copykat_meta$malignant_status) &
-            copykat_meta$malignant_status == "Malignant epithelial",
-    ],
-    "Results/copyKAT/malignant_epithelial_cells.csv",
-    row.names = FALSE
-)
-
-p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "malignant_status",
-    pt.size = 0.3
-)
-ggsave("Results/copyKAT/malignant_status_UMAP.png",
-    plot = p, width = 12, height = 9
-)
-
-p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "malignant_status",
-    split.by = "orig.ident", pt.size = 0.3
-)
-ggsave("Results/copyKAT/malignant_status_UMAP_by_patient.png",
+ggsave("Results/copyKAT/copykat_prediction_UMAP_by_patient.png",
     plot = p, width = 24, height = 8
 )
 
