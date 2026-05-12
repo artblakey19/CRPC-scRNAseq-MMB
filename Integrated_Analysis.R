@@ -327,7 +327,7 @@ ggsave("Results/Integrated/SingleR_UMAP.png",
 
 # UMAP with SingleR labels by patient
 p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "SingleR_pruned",
+    reduction = "umap", group.by = "SingleR",
     split.by = "orig.ident", label = TRUE, repel = TRUE
 )
 ggsave("Results/Integrated/SingleR_UMAP_by_patient.png",
