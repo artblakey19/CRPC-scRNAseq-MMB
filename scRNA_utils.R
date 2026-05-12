@@ -7,12 +7,11 @@
 # GSEA by cluster: utils_run_cluster_gsea()
 
 library(Seurat)
-library(SingleR)
-library(SingleCellExperiment)
-library(clusterProfiler)
-library(msigdbr)
-library(openxlsx)
-library(future.apply)
+# Heavy/Bioconductor packages are loaded lazily inside the functions that need them
+# (SingleR + SingleCellExperiment in utils_run_singleR_annotation; clusterProfiler +
+# msigdbr + openxlsx + future.apply in utils_run_cluster_gsea). This avoids masking
+# Seurat generics like Assays() in scripts that source this file but don't run
+# SingleR/GSEA — see Epithelial_Analysis.R which only calls utils_save_all_markers.
 
 # Load & QC ----
 #' 1. Load & QC
@@ -67,6 +66,8 @@ utils_run_standard_preprocessing <- function(seurat_obj, nfeatures = 2000) {
 #' @param ref_data Reference dataset via celldex (e.g., HumanPrimaryCellAtlasData())
 #' @return A Seurat object with basic celltype predictions in the metadata
 utils_run_singleR_annotation <- function(seurat_obj, ref_data) {
+  library(SingleR)
+  library(SingleCellExperiment)
   sce <- as.SingleCellExperiment(seurat_obj)
   predictions <- SingleR(
     test = sce, ref = ref_data, labels = ref_data$label.main
@@ -114,6 +115,11 @@ utils_run_cluster_gsea <- function(
   species = "Homo sapiens",
   pval_cutoff = 0.05
 ) {
+  library(clusterProfiler)
+  library(msigdbr)
+  library(openxlsx)
+  library(future.apply)
+
   # Set identity if specified
   if (!is.null(ident)) {
     Idents(seurat_obj) <- ident
