@@ -32,11 +32,7 @@ suppressMessages({
     library(BiocParallel)
 })
 
-IN_RDS  <- if (file.exists("Results/Epithelial/epi_signature_scored.rds")) {
-    "Results/Epithelial/epi_signature_scored.rds"
-} else {
-    "Results/Epithelial/epi_clustered.rds"
-}
+IN_RDS  <- "Results/Epithelial/epi_clustered.rds"
 OUT_DIR <- "Results/Epithelial/Bluemn2017_ssGSEA"
 OUT_RDS <- "Results/Epithelial/epi_bluemn2017_ssgsea.rds"
 GMT_DIR <- "Resources/msigdb_v6.0_GMTs"

@@ -1,4 +1,4 @@
-# Epithelial_Song2022_PaperPCa.R
+# Epithelial_Song2022_ssGSEA.R
 # Song et al. 2022 Nat Comm 재현 — franklinhuanglab repo Seqwell_Combined_E.R 패턴.
 # Liu/Tomlins/Wallace/Setlur 4종 paper PCa gene sets에 AddModuleScore 적용.
 #
@@ -23,11 +23,7 @@ library(dplyr)
 library(msigdbr)
 library(ggplot2)
 
-IN_RDS <- if (file.exists("Results/Epithelial/epi_signature_scored.rds")) {
-    "Results/Epithelial/epi_signature_scored.rds"
-} else {
-    "Results/Epithelial/epi_clustered.rds"
-}
+IN_RDS  <- "Results/Epithelial/epi_clustered.rds"
 OUT_DIR <- "Results/Epithelial/Song2022_PaperPCa"
 OUT_RDS <- "Results/Epithelial/epi_song2022_paperpca.rds"
 
