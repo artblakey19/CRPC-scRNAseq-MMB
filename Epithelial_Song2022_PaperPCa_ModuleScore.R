@@ -1,17 +1,9 @@
-# Epithelial_Song2022_ssGSEA.R
+# Epithelial_Song2022_PaperPCa_ModuleScore.R
 # Song et al. 2022 Nat Comm 재현 — franklinhuanglab repo Seqwell_Combined_E.R 패턴.
-# Liu/Tomlins/Wallace/Setlur 4종 paper PCa gene sets에 AddModuleScore 적용.
-#
-# 자매 스크립트: Epithelial_Bluemn2017_ssGSEA.R (Bluemn 2017 AR-null/FGF-MAPK
-# phenotype 재현, GSVA 기반 진짜 ssGSEA). 둘은 출처 논문/목적 다름; 합치지 말 것.
+# Song 2022가 tumor cluster annotation용으로 사용한 paper-named PCa signatures
+# (Liu/Tomlins/Wallace/Setlur 4종, C2CGP) — Seurat AddModuleScore로 스코어링.
 #
 # PCa-known gene set들의 epithelial UMAP 상 activity 표시 (참고용).
-#
-# Note:
-#   원래 Song et al. 2022 page 4 two-stage workflow (Stage 1 AddModuleScore +
-#   Stage 2 ssGSEA top 1% C2CGP)으로 tumor cluster를 자동 호출했으나, top 1%
-#   cutoff와 PCa set 정의가 명확하지 않아 classification은 제거. 단순히 PCa
-#   signature가 어느 cluster에서 활성화되는지 시각화만 수행.
 #
 # DNPC cohort caveat:
 #   - AR-driven LIU_PROSTATE_CANCER_UP, SETLUR_TMPRSS2_ERG_FUSION_UP은 muted 예상.
@@ -24,8 +16,8 @@ library(msigdbr)
 library(ggplot2)
 
 IN_RDS  <- "Results/Epithelial/epi_clustered.rds"
-OUT_DIR <- "Results/Epithelial/Song2022_PaperPCa"
-OUT_RDS <- "Results/Epithelial/epi_song2022_paperpca.rds"
+OUT_DIR <- "Results/Epithelial/Song2022_PaperPCa_ModuleScore"
+OUT_RDS <- "Results/Epithelial/epi_song2022_paperpca_modulescore.rds"
 
 # Paper named PCa gene sets (Seqwell_Combined_E.R line 896-906에서 사용한 4종)
 PAPER_PCA_SETS <- c(

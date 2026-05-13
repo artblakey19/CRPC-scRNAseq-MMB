@@ -17,9 +17,6 @@
 #   ACEVEDO_FGFR1_TARGETS_IN_PROSTATE_CANCER_MODEL_UP  -> UP — FGFR1-driven PCa program
 #   MEK_UP.V1_UP                                       -> UP — oncogenic MEK activation (C6)
 #
-# 자매 스크립트: Epithelial_Song2022_PaperPCa.R (Song et al. 2022 재현).
-# 둘은 목적/출처 논문이 다르니 합치지 말 것.
-#
 # Method: GSVA 2.x ssgseaParam() + gsva(). Per-cell scores written to meta.data.
 # One-way ANOVA + TukeyHSD across seurat_clusters per signature.
 
