@@ -38,7 +38,7 @@ p <- DimPlot(CRPC1, group.by = "Phase", pt.size = 0.3)
 ggsave(
   "Results/CRPC1/CellCycle_Phase_UMAP.tiff",
   plot = p,
-  width = 10, height = 7, dpi = 300
+  width = 10, height = 7, dpi = 300, bg = "white"
 )
 
 # Cell Annotation ----
@@ -49,7 +49,7 @@ p <- DimPlot(CRPC1, group.by = "celltype", label = TRUE, repel = TRUE)
 ggsave(
   "Results/CRPC1/SingleR_Annotations.tiff",
   plot = p,
-  width = 15, height = 7, dpi = 300
+  width = 15, height = 7, dpi = 300, bg = "white"
 )
 
 # Check Markers & Save
@@ -63,7 +63,7 @@ p <- FeaturePlot(CRPC1,
 ggsave(
   "Results/CRPC1/Annotation_Markers.tiff",
   plot = p,
-  width = 10, height = 7, dpi = 300
+  width = 10, height = 7, dpi = 300, bg = "white"
 )
 # Find Markers & Save
 all_markers <- utils_save_all_markers(
@@ -93,5 +93,5 @@ p <- DimPlot(CRPC1, reduction = "umap", label = TRUE)
 ggsave(
   "Results/CRPC1/SingleR_Annotations.tiff",
   plot = p,
-  width = 10, height = 7, dpi = 300
+  width = 10, height = 7, dpi = 300, bg = "white"
 )

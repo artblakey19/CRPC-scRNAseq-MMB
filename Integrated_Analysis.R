@@ -73,7 +73,7 @@ p <- VlnPlot(combined_CRPC_raw,
     features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
     group.by = "orig.ident", ncol = 3, pt.size = 0
 )
-ggsave("Results/QC/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8)
+ggsave("Results/QC/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8, bg = "white")
 
 # VlnPlot with threshold lines to verify QC cutoffs
 qc_thresholds <- list(
@@ -93,7 +93,7 @@ qc_vln <- lapply(names(qc_thresholds), function(feat) {
     vp
 })
 qc_vln_combined <- wrap_plots(qc_vln, ncol = 3)
-ggsave("Results/QC/QC_VlnPlot_with_thresholds.png", plot = qc_vln_combined, width = 14, height = 6)
+ggsave("Results/QC/QC_VlnPlot_with_thresholds.png", plot = qc_vln_combined, width = 14, height = 6, bg = "white")
 
 # FeatureScatter plot - separate panels for each patient (P1, P2, P3)
 split_obj <- SplitObject(combined_CRPC_raw, split.by = "orig.ident")
@@ -103,7 +103,7 @@ scatter_plots <- lapply(names(split_obj), function(sample) {
     p1 + p2
 })
 combined_scatter <- wrap_plots(scatter_plots, ncol = 1)
-ggsave("Results/QC/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15)
+ggsave("Results/QC/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15, bg = "white")
 
 # Filter
 combined_CRPC <- subset(combined_CRPC_raw,
@@ -217,7 +217,7 @@ run_copykat_sample <- function(
 combined_CRPC <- SCTransform(combined_CRPC, verbose = FALSE)
 combined_CRPC <- RunPCA(combined_CRPC, verbose = FALSE)
 # Draw elbow plot
-ggsave("Results/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15)
+ggsave("Results/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15, bg = "white")
 
 # Integration ----
 # Harmony Integration — preserves biological heterogeneity better than CCA
@@ -245,11 +245,7 @@ g2m.genes <- cc.genes.updated.2019$g2m.genes
 combined_CRPC <- CellCycleScoring(combined_CRPC, s.features = s.genes, g2m.features = g2m.genes)
 # Draw on UMAP & Save
 p <- DimPlot(combined_CRPC, group.by = "Phase", pt.size = 0.3)
-ggsave(
-    "Results/Integrated/CellCycle_Phase_UMAP.tiff",
-    plot = p,
-    width = 10, height = 7, dpi = 300
-)
+ggsave("Results/Integrated/CellCycle_Phase_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
 
 # Annotation ----
 # Check marker genes
@@ -261,18 +257,18 @@ p <- FeaturePlot(combined_CRPC,
     ),
     ncol = 4, pt.size = 0.1
 )
-ggsave("Results/Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 19)
+ggsave("Results/Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 19, bg = "white")
 
 # Find all markers
 utils_save_all_markers(combined_CRPC, "Results/Integrated/all_markers.csv")
 
 # Save cluster UMAP (annotation 전 단계 — cluster 번호로 확인)
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters", label = TRUE)
-ggsave("Results/Integrated/Cluster_UMAP_integrated.png", plot = p, width = 15, height = 15)
+ggsave("Results/Integrated/Cluster_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
 
 # Save cluster UMAP by patient
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters", split.by = "orig.ident", label = TRUE)
-ggsave("Results/Integrated/Cluster_UMAP_by_patient.png", plot = p, width = 24, height = 15)
+ggsave("Results/Integrated/Cluster_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
 
 # SingleR Annotation ----
 # Reference: Human Primary Cell Atlas (bulk RNA-seq, broad cell types)
@@ -306,12 +302,12 @@ write.csv(
 )
 
 # Diagnostic plots — score heatmap & delta distribution
-png("Results/Integrated/SingleR_score_heatmap.png", width = 1200, height = 900)
+png("Results/Integrated/SingleR_score_heatmap.png", width = 1200, height = 900, bg = "white")
 plotScoreHeatmap(singler_pred)
 dev.off()
 
 png("Results/Integrated/SingleR_delta_distribution.png",
-    width = 1200, height = 900
+    width = 1200, height = 900, bg = "white"
 )
 plotDeltaDistribution(singler_pred, ncol = 4)
 dev.off()
@@ -322,7 +318,7 @@ p <- DimPlot(combined_CRPC,
     label = TRUE, repel = TRUE
 )
 ggsave("Results/Integrated/SingleR_UMAP.png",
-    plot = p, width = 15, height = 15
+    plot = p, width = 15, height = 15, bg = "white"
 )
 
 # UMAP with SingleR labels by patient
@@ -331,7 +327,7 @@ p <- DimPlot(combined_CRPC,
     split.by = "orig.ident", label = TRUE, repel = TRUE
 )
 ggsave("Results/Integrated/SingleR_UMAP_by_patient.png",
-    plot = p, width = 24, height = 15
+    plot = p, width = 24, height = 15, bg = "white"
 )
 
 # Label Annotation
@@ -432,7 +428,7 @@ p <- DimPlot(combined_CRPC,
     pt.size = 0.3
 )
 ggsave("Results/copyKAT/copykat_prediction_UMAP.png",
-    plot = p, width = 10, height = 8
+    plot = p, width = 10, height = 8, bg = "white"
 )
 
 p <- DimPlot(combined_CRPC,
@@ -440,16 +436,16 @@ p <- DimPlot(combined_CRPC,
     split.by = "orig.ident", pt.size = 0.3
 )
 ggsave("Results/copyKAT/copykat_prediction_UMAP_by_patient.png",
-    plot = p, width = 24, height = 8
+    plot = p, width = 24, height = 8, bg = "white"
 )
 
 # Save labelled UMAP
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE)
-ggsave("Results/Integrated/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15)
+ggsave("Results/Integrated/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
 
 # Save labelled UMAP by patient
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", split.by = "orig.ident", label = TRUE)
-ggsave("Results/Integrated/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15)
+ggsave("Results/Integrated/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
 
 # Save RDS ----
 saveRDS(combined_CRPC, "Results/Integrated/combined_CRPC.rds")

@@ -2,6 +2,9 @@
 Raw data/
 Results/
 R script/
+
+# External data resources (MSigDB GMTs, gencode tables, etc.) — license/redistribution risk
+Resources/
 # R/RStudio configuration and history
 .Rhistory
 .Rproj.user/

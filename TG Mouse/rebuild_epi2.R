@@ -82,11 +82,11 @@ p2 <- DimPlot(epi2,
 
 ggsave("TG Mouse/Results/epi2_EpiCellTypes_UMAP.png",
     p1,
-    width = 8, height = 7, dpi = 300
+    width = 8, height = 7, dpi = 300, bg = "white"
 )
 ggsave("TG Mouse/Results/epi2_EpiCellTypes_split_UMAP.png",
     p2,
-    width = 14, height = 7, dpi = 300
+    width = 14, height = 7, dpi = 300, bg = "white"
 )
 
 # Marker DotPlot (SFig.4h)
@@ -122,7 +122,7 @@ p3 <- DotPlot(epi2,
 
 ggsave("TG Mouse/Results/epi2_EpiCellTypes_markers_DotPlot.png",
     p3,
-    width = 20, height = 6, dpi = 300
+    width = 20, height = 6, dpi = 300, bg = "white"
 )
 
 # Save ----

@@ -1124,7 +1124,7 @@ for (i in 1:num.sample.types) {
 }
 labelColors
 pca.file <- paste("pca_by_", "Group", ".png", sep = "")
-png(file = pca.file)
+png(file = pca.file, bg = "white")
 plot(pc.values$PC1, pc.values$PC2, col = labelColors, xlab = paste("PC1 (", round(100 * variance.explained[1], digits = 2), "%)", sep = ""), ylab = paste("PC2 (", round(100 * variance.explained[2], digits = 2), "%)", sep = ""), pch = 19)
 text(pc.values$PC1, pc.values$PC2, c("48625_Castration", "48626_Castration", "48627_Primary", "48628_Primary"), pos = 1)
 legend("bottomright", legend = groups, col = color.palette, pch = 19)

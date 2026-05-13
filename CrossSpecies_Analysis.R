@@ -99,7 +99,7 @@ p_elbow <- ElbowPlot(CombinedEpi, ndims = 50) +
     ggtitle("LogNorm+Harmony Elbow Plot")
 ggsave("Results/Cross_Species/ElbowPlot_LogNorm_Harmony.png",
     p_elbow,
-    width = 7, height = 5, dpi = 300
+    width = 7, height = 5, dpi = 300, bg = "white"
 )
 
 # Harmony Integration
@@ -159,11 +159,11 @@ p4 <- DimPlot(CombinedEpi,
 # Save plots
 ggsave("Results/Cross_Species/UMAP_LogNorm_Harmony_overview.png",
     p1 + p2 + p3 + plot_layout(ncol = 3),
-    width = 24, height = 7, dpi = 300
+    width = 24, height = 7, dpi = 300, bg = "white"
 )
 ggsave("Results/Cross_Species/UMAP_LogNorm_Harmony_split_by_sample.png",
     p4,
-    width = 28, height = 7, dpi = 300
+    width = 28, height = 7, dpi = 300, bg = "white"
 )
 
 # LogNorm + CCA Integration ----
@@ -179,7 +179,7 @@ CombinedEpi_CCA <- RunPCA(CombinedEpi_CCA)
 
 # Evaluate LogNorm+CCA PCA dimensions
 p_elbow_cca <- ElbowPlot(CombinedEpi_CCA, ndims = 50) + ggtitle("LogNorm+CCA Elbow Plot")
-ggsave("Results/Cross_Species/ElbowPlot_LogNorm_CCA.png", p_elbow_cca, width = 7, height = 5, dpi = 300)
+ggsave("Results/Cross_Species/ElbowPlot_LogNorm_CCA.png", p_elbow_cca, width = 7, height = 5, dpi = 300, bg = "white")
 
 CombinedEpi_CCA <- RunUMAP(CombinedEpi_CCA, reduction = "pca", dims = 1:30)
 CombinedEpi_CCA <- FindNeighbors(CombinedEpi_CCA, reduction = "pca", dims = 1:30)
@@ -225,11 +225,11 @@ p8 <- DimPlot(CombinedEpi_CCA,
 
 ggsave("Results/Cross_Species/UMAP_LogNorm_CCA_overview.png",
     p5 + p6 + p7 + plot_layout(ncol = 3),
-    width = 24, height = 7, dpi = 300
+    width = 24, height = 7, dpi = 300, bg = "white"
 )
 ggsave("Results/Cross_Species/UMAP_LogNorm_CCA_split_by_sample.png",
     p8,
-    width = 28, height = 7, dpi = 300
+    width = 28, height = 7, dpi = 300, bg = "white"
 )
 
 # SCTransform + Harmony Integration ----
@@ -255,7 +255,7 @@ p_elbow_sct_harmony <- ElbowPlot(CombinedEpi_SCT_Harmony, ndims = 50) +
     ggtitle("SCT+Harmony Elbow Plot")
 ggsave("Results/Cross_Species/ElbowPlot_SCT_Harmony.png",
     p_elbow_sct_harmony,
-    width = 7, height = 5, dpi = 300
+    width = 7, height = 5, dpi = 300, bg = "white"
 )
 
 CombinedEpi_SCT_Harmony <- RunHarmony(CombinedEpi_SCT_Harmony,
@@ -311,11 +311,11 @@ p_sh4 <- DimPlot(CombinedEpi_SCT_Harmony,
 
 ggsave("Results/Cross_Species/UMAP_SCT_Harmony_overview.png",
     p_sh1 + p_sh2 + p_sh3 + plot_layout(ncol = 3),
-    width = 24, height = 7, dpi = 300
+    width = 24, height = 7, dpi = 300, bg = "white"
 )
 ggsave("Results/Cross_Species/UMAP_SCT_Harmony_split_by_sample.png",
     p_sh4,
-    width = 28, height = 7, dpi = 300
+    width = 28, height = 7, dpi = 300, bg = "white"
 )
 
 # SCTransform + CCA Integration ----
@@ -349,7 +349,7 @@ p_elbow_sct <- ElbowPlot(CombinedEpi_SCT, ndims = 50) +
     ggtitle("SCT+CCA Elbow Plot")
 ggsave("Results/Cross_Species/ElbowPlot_SCT_CCA.png",
     p_elbow_sct,
-    width = 7, height = 5, dpi = 300
+    width = 7, height = 5, dpi = 300, bg = "white"
 )
 
 CombinedEpi_SCT <- RunUMAP(CombinedEpi_SCT,
@@ -405,11 +405,11 @@ p12 <- DimPlot(CombinedEpi_SCT,
 
 ggsave("Results/Cross_Species/UMAP_SCT_CCA_overview.png",
     p9 + p10 + p11 + plot_layout(ncol = 3),
-    width = 24, height = 7, dpi = 300
+    width = 24, height = 7, dpi = 300, bg = "white"
 )
 ggsave("Results/Cross_Species/UMAP_SCT_CCA_split_by_sample.png",
     p12,
-    width = 28, height = 7, dpi = 300
+    width = 28, height = 7, dpi = 300, bg = "white"
 )
 
 # Mouse EpiCellTypes + Human sample overlay on SCT+CCA UMAP ----
@@ -497,12 +497,12 @@ p_triple <- plot_highlight(
 # Save: reference + all 5 samples highlighted
 ggsave("Results/Cross_Species/UMAP_SCT_CCA_EpiCellTypes_reference.png",
     p_mouse_ref,
-    width = 10, height = 8, dpi = 300
+    width = 10, height = 8, dpi = 300, bg = "white"
 )
 ggsave("Results/Cross_Species/UMAP_SCT_CCA_samples_on_reference.png",
     p_mouse_ref + p_crpc1 + p_crpc2 + p_crpc3 + p_double + p_triple +
         plot_layout(ncol = 3),
-    width = 24, height = 14, dpi = 300
+    width = 24, height = 14, dpi = 300, bg = "white"
 )
 
 # Export for scANVI ----
