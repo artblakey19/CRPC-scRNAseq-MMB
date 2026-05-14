@@ -65,6 +65,14 @@ cna_cols <- colorRamp2(c(-0.10, 0, 0.10), c("#3B4CC0", "white", "#B40426"))
 # a per-patient subdir and restore the wd on exit.
 run_copykat_patient <- function(sample_id) {
     message("\n==== copyKAT: ", sample_id, " ====")
+    sample_dir  <- file.path(ROOT_OUT, sample_id)
+    cached_rds  <- file.path(sample_dir, paste0(sample_id, "_copykat.rds"))
+    cached_cna  <- file.path(sample_dir, paste0(sample_id, "_copykat_CNA_results.txt"))
+    if (file.exists(cached_rds) && file.exists(cached_cna)) {
+        message("  cached copyKAT result found — skipping rerun")
+        return(readRDS(cached_rds))
+    }
+
     sub <- epi[, epi$orig.ident == sample_id]
     ref_cells <- colnames(sub)[sub$seurat_clusters == REF_CLUSTER]
     message("  cells = ", ncol(sub),
@@ -76,7 +84,6 @@ run_copykat_patient <- function(sample_id) {
     raw <- as.matrix(GetAssayData(sub, assay = "RNA", layer = "counts"))
     storage.mode(raw) <- "numeric"
 
-    sample_dir <- file.path(ROOT_OUT, sample_id)
     dir.create(sample_dir, showWarnings = FALSE, recursive = TRUE)
     write.csv(data.frame(cell = ref_cells),
               file.path(sample_dir, paste0(sample_id, "_reference_cells.csv")),
@@ -179,7 +186,9 @@ for (sid in patients) {
     rm(cna); gc()
 
     # ---- hierarchical clustering of CNA profiles (Euclidean + Ward.D2, bbaf076) ----
-    cna_dist <- dist(t(mat))
+    # parDist: base dist() is single-threaded and takes ~20 min on all cells.
+    cna_dist <- parallelDist::parDist(t(mat), method = "euclidean",
+                                      threads = N_CORES)
     hc <- hclust(cna_dist, method = "ward.D2")
     stopifnot(all(hc$labels %in% colnames(epi)))
 
@@ -237,12 +246,14 @@ for (sid in patients) {
     colnames(agg) <- paste0(sid, "_S", sub_levels)
 
     # ---- tree view 2: subclone relationship tree (clonal tree) ----
+    # plot via as.dendrogram: plot.hclust errors on a 2-leaf tree (best_k == 2).
     sub_hc <- hclust(dist(t(agg)), method = "ward.D2")
     png(file.path(sample_dir, paste0(sid, "_subclone_tree_k", best_k, ".png")),
         width = 6, height = 5, units = "in", res = 200, bg = "white")
     par(mar = c(2, 4, 3, 1))
-    plot(sub_hc, main = paste0(sid, " — subclone relationship tree (K=", best_k, ")"),
-         xlab = "", sub = "", ylab = "CNA distance")
+    plot(as.dendrogram(sub_hc),
+         main = paste0(sid, " — subclone relationship tree (K=", best_k, ")"),
+         ylab = "CNA distance")
     dev.off()
 
     # ---- per-subclone mean CNA heatmap ----
@@ -251,7 +262,7 @@ for (sid in patients) {
     n_per_sub <- as.integer(table(prim)[as.character(sub_levels)])
     ht <- Heatmap(
         t(agg), name = "mean CNA", col = cna_cols,
-        cluster_rows = TRUE, cluster_columns = FALSE,
+        cluster_rows = best_k > 2, cluster_columns = FALSE,
         show_column_names = FALSE, row_names_side = "left",
         column_split = chr_factor, column_gap = unit(0.5, "mm"),
         column_title_gp = gpar(fontsize = 8), border = TRUE,

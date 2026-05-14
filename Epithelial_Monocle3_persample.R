@@ -102,10 +102,15 @@ run_patient <- function(sample_id) {
     rowData(cds)$gene_short_name <- rownames(cds)
 
     # monocle3 needs its own clusters/partitions; cluster on the per-patient
-    # UMAP. use_partition = FALSE -> single connected graph so the trajectory
-    # can span clusters monocle3 would otherwise split into separate partitions.
+    # UMAP. use_partition = TRUE -> learn a separate graph per partition.
+    # Forcing FALSE (one connected graph) would structurally assume EVERY
+    # epithelial subtype originates from the cluster-8 diploid anchor — an
+    # unjustified claim for a cohort of patient-private aneuploid subclones
+    # (Hillock/Club are separate subclones). With TRUE, partitions not
+    # connected to the cluster-8 root correctly get Inf pseudotime rather than
+    # a forced ordering; downstream code already filters on is.finite().
     cds <- cluster_cells(cds, reduction_method = "UMAP")
-    cds <- learn_graph(cds, use_partition = FALSE, close_loop = FALSE)
+    cds <- learn_graph(cds, use_partition = TRUE, close_loop = FALSE)
     cds <- order_cells(cds, root_cells = root_cells)
 
     sub$pseudotime <- pseudotime(cds)[colnames(sub)]
