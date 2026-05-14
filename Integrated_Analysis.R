@@ -113,9 +113,12 @@ combined_CRPC <- subset(combined_CRPC_raw,
 )
 
 # copyKAT helper functions ----
-# copyKAT is executed after cell type annotation so each patient can use
-# same-sample immune cells as an explicit diploid reference.
-dir.create("Results/copyKAT", showWarnings = FALSE, recursive = TRUE)
+# All-cell copyKAT: run on the full QC-filtered object (every cell type), with
+# same-sample immune cells as the diploid reference. Outputs live under
+# Results/Integrated/copyKAT_allcells/ and carry an `allcells` file prefix to keep them
+# distinct from the epithelial-only per-patient run
+# (Epithelial_copyKAT_perpatient.R -> Results/Epithelial/copyKAT_perpatient/).
+dir.create("Results/Integrated/copyKAT_allcells", showWarnings = FALSE, recursive = TRUE)
 
 extract_copykat_prediction <- function(copykat_res, sample_id) {
     if (is.null(copykat_res$prediction)) {
@@ -163,6 +166,7 @@ run_copykat_sample <- function(
     message("Running copyKAT for ", sample_id)
 
     sample_name <- gsub("[^A-Za-z0-9_.-]+", "_", sample_id)
+    file_prefix <- paste0(sample_name, "_allcells")
     sample_dir <- file.path(output_dir, sample_name)
     dir.create(sample_dir, showWarnings = FALSE, recursive = TRUE)
 
@@ -190,23 +194,23 @@ run_copykat_sample <- function(
         win.size = 25,
         norm.cell.names = norm_cell_arg,
         KS.cut = 0.1,
-        sam.name = sample_name,
+        sam.name = file_prefix,
         distance = "euclidean",
         genome = "hg20",
         n.cores = n_cores
     )
     setwd(old_wd)
 
-    saveRDS(copykat_res, file.path(sample_dir, paste0(sample_name, "_copykat.rds")))
+    saveRDS(copykat_res, file.path(sample_dir, paste0(file_prefix, "_copykat.rds")))
     write.csv(
         data.frame(cell = normal_cells, copykat_reference_source = reference_source),
-        file.path(sample_dir, paste0(sample_name, "_copykat_reference_cells.csv")),
+        file.path(sample_dir, paste0(file_prefix, "_copykat_reference_cells.csv")),
         row.names = FALSE
     )
     pred <- extract_copykat_prediction(copykat_res, sample_id)
     pred$copykat_reference_source <- reference_source
     pred$copykat_reference_n <- length(normal_cells)
-    write.csv(pred, file.path(sample_dir, paste0(sample_name, "_copykat_predictions.csv")), row.names = FALSE)
+    write.csv(pred, file.path(sample_dir, paste0(file_prefix, "_copykat_predictions.csv")), row.names = FALSE)
 
     rm(sample_obj, raw_counts, copykat_res)
     gc()
@@ -355,9 +359,9 @@ combined_CRPC <- RenameIdents(
 # Save annotation to metadata
 combined_CRPC$celltype <- Idents(combined_CRPC)
 
-# copyKAT CNV inference ----
-# Run per patient on QC-filtered raw RNA counts. Immune cells are used as the
-# same-sample diploid reference.
+# copyKAT CNV inference (all-cell) ----
+# Run per patient on QC-filtered raw RNA counts across all cell types. Immune
+# cells are used as the same-sample diploid reference.
 copykat_meta_cols <- c(
     "copykat_prediction", "copykat_sample",
     "copykat_reference_source", "copykat_reference_n"
@@ -375,7 +379,7 @@ if (run_copykat) {
         pred <- run_copykat_sample(
             seu = combined_CRPC,
             sample_id = sample_id,
-            output_dir = "Results/copyKAT",
+            output_dir = "Results/Integrated/copyKAT_allcells",
             normal_cells = ref$cells,
             reference_source = ref$source,
             n_cores = copykat_cores
@@ -394,10 +398,10 @@ if (run_copykat) {
     copykat_pred <- bind_rows(lapply(copykat_runs, `[[`, "prediction"))
 
     write.csv(copykat_reference_summary,
-        "Results/copyKAT/copykat_reference_summary.csv", row.names = FALSE
+        "Results/Integrated/copyKAT_allcells/copykat_allcells_reference_summary.csv", row.names = FALSE
     )
     write.csv(copykat_pred,
-        "Results/copyKAT/copykat_predictions_all_samples.csv", row.names = FALSE
+        "Results/Integrated/copyKAT_allcells/copykat_allcells_predictions_all_samples.csv", row.names = FALSE
     )
 
     cell_meta <- data.frame(cell = colnames(combined_CRPC)) %>%
@@ -411,7 +415,7 @@ copykat_patient_summary <- combined_CRPC@meta.data %>%
     dplyr::count(orig.ident, copykat_prediction, name = "n")
 write.csv(
     copykat_patient_summary,
-    "Results/copyKAT/copykat_patient_summary.csv",
+    "Results/Integrated/copyKAT_allcells/copykat_allcells_patient_summary.csv",
     row.names = FALSE
 )
 
@@ -419,7 +423,7 @@ copykat_cluster_summary <- combined_CRPC@meta.data %>%
     dplyr::count(orig.ident, seurat_clusters, copykat_prediction, name = "n")
 write.csv(
     copykat_cluster_summary,
-    "Results/copyKAT/copykat_cluster_summary.csv",
+    "Results/Integrated/copyKAT_allcells/copykat_allcells_cluster_summary.csv",
     row.names = FALSE
 )
 
@@ -427,7 +431,7 @@ p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "copykat_prediction",
     pt.size = 0.3
 )
-ggsave("Results/copyKAT/copykat_prediction_UMAP.png",
+ggsave("Results/Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP.png",
     plot = p, width = 10, height = 8, bg = "white"
 )
 
@@ -435,7 +439,7 @@ p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "copykat_prediction",
     split.by = "orig.ident", pt.size = 0.3
 )
-ggsave("Results/copyKAT/copykat_prediction_UMAP_by_patient.png",
+ggsave("Results/Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP_by_patient.png",
     plot = p, width = 24, height = 8, bg = "white"
 )
 
