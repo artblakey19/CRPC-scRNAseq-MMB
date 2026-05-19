@@ -14,10 +14,11 @@ library(Seurat)
 library(dplyr)
 library(msigdbr)
 library(ggplot2)
+source("scripts/00_utils/scRNA_utils.R")
 
-IN_RDS  <- "Results/Epithelial/epi_clustered.rds"
-OUT_DIR <- "Results/Epithelial/Song2022_PaperPCa_ModuleScore"
-OUT_RDS <- "Results/Epithelial/epi_song2022_paperpca_modulescore.rds"
+IN_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
+OUT_DIR <- "Results/05_Epithelial_Downstream/Song2022_PaperPCa_ModuleScore"
+OUT_RDS <- "Results/05_Epithelial_Downstream/epi_song2022_paperpca_modulescore.rds"
 
 # Paper named PCa gene sets (Seqwell_Combined_E.R line 896-906에서 사용한 4종)
 PAPER_PCA_SETS <- c(
@@ -29,6 +30,14 @@ PAPER_PCA_SETS <- c(
 
 stopifnot("Input rds not found" = file.exists(IN_RDS))
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+
+# ============================================================
+# Load-or-compute: skip heavy module scoring when OUT_RDS exists ----
+# ============================================================
+if (file.exists(OUT_RDS)) {
+    message("Loading cached ", OUT_RDS, " — skipping module scoring, regenerating figures")
+    epi <- readRDS(OUT_RDS)
+} else {
 
 epi <- readRDS(IN_RDS)
 message("Loaded: ", IN_RDS)
@@ -80,13 +89,21 @@ for (set_name in names(pca_sets)) {
     epi@meta.data[[src]] <- NULL
 }
 
+# Persist annotated object (compute branch only)
+saveRDS(epi, OUT_RDS)
+
+}  # end load-or-compute
+
+# Signature set names usable by the figure loop in both modes.
+# In load mode pca_sets does not exist — derive from the *_sig meta.data columns.
+set_names <- if (exists("pca_sets")) names(pca_sets) else
+    sub("_sig$", "", grep("_sig$", colnames(epi@meta.data), value = TRUE))
+
 # ============================================================
-# UMAP feature plots ----
+# UMAP feature plots (viridis, colorblind-safe continuous scale) ----
 # ============================================================
-paper_grad <- function() scale_color_gradientn(
-    colours = c("blue", "green", "yellow", "red")
-)
-for (set_name in names(pca_sets)) {
+paper_grad <- function() scale_color_viridis_c(option = "viridis")
+for (set_name in set_names) {
     sc_col <- paste0(set_name, "_sig")
     p <- FeaturePlot(epi, features = sc_col, pt.size = 0.3, order = TRUE) +
         paper_grad() + ggtitle(set_name)
@@ -98,6 +115,6 @@ for (set_name in names(pca_sets)) {
 # ============================================================
 # Save ----
 # ============================================================
-saveRDS(epi, OUT_RDS)
+# Note: saveRDS(epi, OUT_RDS) happens inside the compute branch above.
 message("Done. Outputs in: ", OUT_DIR)
 message("Annotated object: ", OUT_RDS)

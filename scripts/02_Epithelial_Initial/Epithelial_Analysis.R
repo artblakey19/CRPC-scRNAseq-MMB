@@ -11,14 +11,24 @@ library(future)
 plan("multicore", workers = 30)
 options(future.globals.maxSize = 128 * 1024^3)
 
-source("scRNA_utils.R")
+source("scripts/00_utils/scRNA_utils.R")
 
-dir.create("Results/Epithelial", showWarnings = FALSE, recursive = TRUE)
+dir.create("Results/02_Epithelial_Initial", showWarnings = FALSE, recursive = TRUE)
+
+# Load-or-compute: when the clustered object already exists, skip the heavy
+# SCT/Harmony/clustering pipeline and just reload it to regenerate figures.
+EPI_RDS  <- "Results/02_Epithelial_Initial/epi_clustered.rds"
+computed <- !file.exists(EPI_RDS)
+
+# Resolutions swept for clustree (also used by the figure section below).
+res_vec <- c(0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.2)
+
+if (computed) {
 
 # ============================================================
 # Load: epithelial subset ----
 # ============================================================
-combined_CRPC <- readRDS("Results/Integrated/combined_CRPC.rds")
+combined_CRPC <- readRDS("Results/01_Integrated/combined_CRPC.rds")
 
 epi <- subset(combined_CRPC, subset = celltype == "Epithelial")
 
@@ -54,7 +64,7 @@ epi <- IntegrateLayers(
 )
 epi[["RNA"]] <- JoinLayers(epi[["RNA"]])
 
-ggsave("Results/Epithelial/ElbowPlot.png",
+ggsave("Results/02_Epithelial_Initial/ElbowPlot.png",
     plot = ElbowPlot(epi, ndims = 50), width = 12, height = 8, bg = "white"
 )
 
@@ -62,7 +72,6 @@ epi <- FindNeighbors(epi, reduction = "harmony", dims = 1:30)
 
 # Multi-resolution clustering for clustree stability assessment.
 # All resolutions stored as SCT_snn_res.X columns; final ident set to 0.6.
-res_vec <- c(0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.2)
 epi <- FindClusters(epi, resolution = res_vec)
 
 # Curate small clusters at res 0.4 based on clustree (0.2 parent inheritance):
@@ -82,34 +91,48 @@ epi <- RunUMAP(epi,
     n.neighbors = 20, min.dist = 0.1, spread = 4.0
 )
 
+} else {
+    message("Loading cached ", EPI_RDS,
+            " — skipping compute, regenerating figures")
+    epi <- readRDS(EPI_RDS)
+    Idents(epi) <- "seurat_clusters"
+}
+
 # clustree: cluster stability tree across resolutions
 # - node size  = cell count in that cluster
 # - edge width = # cells flowing between clusters across resolutions
 # - in_prop    = fraction of cells entering a cluster from the dominant parent
 #                (low in_prop edges = unstable cluster pulling from multiple parents)
 p_tree <- clustree(epi, prefix = "SCT_snn_res.")
-ggsave("Results/Epithelial/clustree.png",
+ggsave("Results/02_Epithelial_Initial/clustree.png",
     plot = p_tree, width = 12, height = 14, dpi = 200, bg = "white"
 )
 
 # UMAPs at each resolution for side-by-side comparison
 umap_list <- lapply(res_vec, function(r) {
-    DimPlot(epi, group.by = paste0("SCT_snn_res.", r), label = TRUE, pt.size = 0.2) +
+    rcol <- paste0("SCT_snn_res.", r)
+    DimPlot(epi, group.by = rcol, label = TRUE, pt.size = 0.2,
+            cols = utils_cb_palette(dplyr::n_distinct(epi@meta.data[[rcol]]))) +
         ggtitle(paste0("res = ", r)) + NoLegend()
 })
 p_umap_grid <- wrap_plots(umap_list, ncol = 3)
-ggsave("Results/Epithelial/UMAP_multires.png",
+ggsave("Results/02_Epithelial_Initial/UMAP_multires.png",
     plot = p_umap_grid, width = 18, height = 14, dpi = 200, bg = "white"
 )
 
-p1 <- DimPlot(epi, label = TRUE, pt.size = 0.3) + ggtitle("Epithelial clusters")
-p2 <- DimPlot(epi, group.by = "orig.ident", pt.size = 0.3) + ggtitle("By patient")
-ggsave("Results/Epithelial/UMAP_cluster.png", plot = p1, width = 10, height = 8, bg = "white")
-ggsave("Results/Epithelial/UMAP_patient.png", plot = p2, width = 10, height = 8, bg = "white")
+p1 <- DimPlot(epi, label = TRUE, pt.size = 0.3,
+              cols = utils_cb_palette(nlevels(factor(epi$seurat_clusters)))) +
+    ggtitle("Epithelial clusters")
+p2 <- DimPlot(epi, group.by = "orig.ident", pt.size = 0.3,
+              cols = utils_cb_palette(dplyr::n_distinct(epi$orig.ident))) +
+    ggtitle("By patient")
+ggsave("Results/02_Epithelial_Initial/UMAP_cluster.png", plot = p1, width = 10, height = 8, bg = "white")
+ggsave("Results/02_Epithelial_Initial/UMAP_patient.png", plot = p2, width = 10, height = 8, bg = "white")
 
 # Patient-split UMAP — patient-specific clusters are tumor candidates
-p <- DimPlot(epi, split.by = "orig.ident", label = TRUE, pt.size = 0.3)
-ggsave("Results/Epithelial/UMAP_split_by_patient.png",
+p <- DimPlot(epi, split.by = "orig.ident", label = TRUE, pt.size = 0.3,
+             cols = utils_cb_palette(nlevels(factor(epi$seurat_clusters))))
+ggsave("Results/02_Epithelial_Initial/UMAP_split_by_patient.png",
     plot = p, width = 24, height = 8, bg = "white"
 )
 
@@ -126,7 +149,7 @@ copykat_cols <- c(
 p_pred <- DimPlot(epi,
     group.by = "copykat_prediction", pt.size = 0.3, cols = copykat_cols
 ) + ggtitle("copyKAT prediction")
-ggsave("Results/Epithelial/UMAP_copykat_prediction.png",
+ggsave("Results/02_Epithelial_Initial/UMAP_copykat_prediction.png",
     plot = p_pred, width = 10, height = 8, bg = "white"
 )
 
@@ -134,7 +157,7 @@ p_pred_split <- DimPlot(epi,
     group.by = "copykat_prediction", split.by = "orig.ident",
     pt.size = 0.3, cols = copykat_cols
 )
-ggsave("Results/Epithelial/UMAP_copykat_prediction_by_patient.png",
+ggsave("Results/02_Epithelial_Initial/UMAP_copykat_prediction_by_patient.png",
     plot = p_pred_split, width = 24, height = 8, bg = "white"
 )
 
@@ -156,7 +179,7 @@ if ("aneuploid" %in% num_cols) {
     ]
 }
 write.csv(copykat_cluster_table,
-    "Results/Epithelial/copykat_cluster_composition.csv", row.names = FALSE
+    "Results/02_Epithelial_Initial/copykat_cluster_composition.csv", row.names = FALSE
 )
 
 # Stacked barplot of aneuploid/diploid fractions per cluster
@@ -167,19 +190,22 @@ p_bar <- ggplot(epi@meta.data,
     scale_fill_manual(values = copykat_cols) +
     labs(x = "Cluster", y = "Proportion", fill = "copyKAT") +
     theme_classic()
-ggsave("Results/Epithelial/copykat_cluster_barplot.png",
+ggsave("Results/02_Epithelial_Initial/copykat_cluster_barplot.png",
     plot = p_bar, width = 10, height = 6, bg = "white"
 )
 
 # ============================================================
 # Cell cycle scoring ----
 # ============================================================
-s.genes <- cc.genes.updated.2019$s.genes
-g2m.genes <- cc.genes.updated.2019$g2m.genes
-epi <- CellCycleScoring(epi, s.features = s.genes, g2m.features = g2m.genes, nbin = 12)
+if (computed) {
+    s.genes <- cc.genes.updated.2019$s.genes
+    g2m.genes <- cc.genes.updated.2019$g2m.genes
+    epi <- CellCycleScoring(epi, s.features = s.genes, g2m.features = g2m.genes, nbin = 12)
+}
 
-p <- DimPlot(epi, group.by = "Phase", pt.size = 0.3)
-ggsave("Results/Epithelial/CellCycle_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
+p <- DimPlot(epi, group.by = "Phase", pt.size = 0.3,
+             cols = utils_cb_palette(dplyr::n_distinct(epi$Phase)))
+ggsave("Results/02_Epithelial_Initial/CellCycle_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
 
 # ============================================================
 # Marker visualization ----
@@ -192,22 +218,22 @@ luminal_basal_club <- c(
 dnpc_markers <- c("CHD7", "MYC", "KMT2C", "KRT7", "SOX2", "SYP", "AR")
 
 p <- FeaturePlot(epi, features = luminal_basal_club, ncol = 4, pt.size = 0.1)
-ggsave("Results/Epithelial/Luminal_Basal_Club_FeaturePlot.png",
+ggsave("Results/02_Epithelial_Initial/Luminal_Basal_Club_FeaturePlot.png",
     plot = p, width = 20, height = 16, bg = "white"
 )
 
 p <- DotPlot(epi, features = luminal_basal_club) + RotatedAxis()
-ggsave("Results/Epithelial/Luminal_Basal_Club_DotPlot.png",
+ggsave("Results/02_Epithelial_Initial/Luminal_Basal_Club_DotPlot.png",
     plot = p, width = 14, height = 8, bg = "white"
 )
 
 p <- FeaturePlot(epi, features = dnpc_markers, ncol = 4, pt.size = 0.1)
-ggsave("Results/Epithelial/DNPC_FeaturePlot.png",
+ggsave("Results/02_Epithelial_Initial/DNPC_FeaturePlot.png",
     plot = p, width = 20, height = 16, bg = "white"
 )
 
 p <- DotPlot(epi, features = dnpc_markers) + RotatedAxis()
-ggsave("Results/Epithelial/DNPC_DotPlot.png",
+ggsave("Results/02_Epithelial_Initial/DNPC_DotPlot.png",
     plot = p, width = 12, height = 8, bg = "white"
 )
 
@@ -224,7 +250,7 @@ p <- DotPlot(epi, features = subtype_markers, cluster.idents = FALSE) +
     RotatedAxis() +
     scale_color_gradient2(low = "#1F77B4", mid = "grey90", high = "#D7261E") +
     labs(title = "CRPC subtype markers (ARPC / DNPC-FGF / DNPC-KRT7 / NEPC)")
-ggsave("Results/Epithelial/Subtype_DotPlot.png",
+ggsave("Results/02_Epithelial_Initial/Subtype_DotPlot.png",
     plot = p, width = 14, height = 8, bg = "white"
 )
 
@@ -243,13 +269,14 @@ p <- DotPlot(epi, features = hillock_markers, cluster.idents = FALSE) +
     RotatedAxis() +
     scale_color_gradient2(low = "#1F77B4", mid = "grey90", high = "#D7261E") +
     labs(title = "Hillock / club-hillock verification (cluster 5)")
-ggsave("Results/Epithelial/Hillock_DotPlot.png",
+ggsave("Results/02_Epithelial_Initial/Hillock_DotPlot.png",
     plot = p, width = 16, height = 8, bg = "white"
 )
 
 # ============================================================
-# Find all markers ----
+# Find all markers + save (compute mode only) ----
 # ============================================================
-utils_save_all_markers(epi, "Results/Epithelial/all_markers.csv")
-
-saveRDS(epi, "Results/Epithelial/epi_clustered.rds")
+if (computed) {
+    utils_save_all_markers(epi, "Results/02_Epithelial_Initial/all_markers.csv")
+    saveRDS(epi, EPI_RDS)
+}

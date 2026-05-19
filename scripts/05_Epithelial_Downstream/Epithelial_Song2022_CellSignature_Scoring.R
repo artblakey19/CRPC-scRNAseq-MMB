@@ -10,7 +10,7 @@
 # if the signature score of each cluster was significantly different from the rest."
 #
 # 입력:
-#   Results/Epithelial/epi_clustered.rds   (Epithelial_Analysis.R 출력)
+#   Results/04_Epithelial_Filtered/epi_filtered_clustered.rds   (Epithelial_Analysis.R 출력)
 #   Resources/Song2022_SuppData2.xlsx      (https://www.nature.com/articles/s41467-021-27322-4)
 #
 # DNPC cohort caveat:
@@ -25,21 +25,34 @@ library(ggplot2)
 library(openxlsx)
 library(ggpubr)   # stat_compare_means — 저자 repo Seqwell_Combined_E.R:929 사용
 library(msigdbr)  # HALLMARK_ANDROGEN_RESPONSE fetch (Fig 4h / Fig 5c)
+source("scripts/00_utils/scRNA_utils.R")
 
-EPI_RDS   <- "Results/Epithelial/epi_clustered.rds"
+EPI_RDS   <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
 SIG_XLSX  <- "Resources/Song2022_SuppData2.xlsx"
 SIG_SHEET <- "Normal Signature"   # Henry et al. 2018 derived (논문 기본).
                                   # 대안: "PCa signature" — Song et al.의 PCa DEG-derived
                                   # (BE/Club/LE + ERGpos_Tumor/ERGneg_Tumor).
-OUT_DIR  <- "Results/Epithelial/Signatures"
-OUT_RDS  <- "Results/Epithelial/epi_signature_scored.rds"
+OUT_DIR  <- "Results/05_Epithelial_Downstream/Signatures"
+OUT_RDS  <- "Results/05_Epithelial_Downstream/epi_signature_scored.rds"
+
+dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+
+# ============================================================
+# Load-or-compute: skip heavy scoring when OUT_RDS already exists ----
+# ============================================================
+# In load mode the xlsx may be gitignored/absent, so only the compute branch
+# requires it. EPI_RDS is only needed in the compute branch as well.
+if (file.exists(OUT_RDS)) {
+    message("Loading cached ", OUT_RDS, " — skipping signature scoring, regenerating figures")
+    epi <- readRDS(OUT_RDS)
+    score_cols <- grep("_Score$", colnames(epi@meta.data), value = TRUE)
+} else {
 
 stopifnot(
     "epi_clustered.rds not found — run Epithelial_Analysis.R first" = file.exists(EPI_RDS),
     "Song2022_SuppData2.xlsx not found — download Supplementary Data 2 from Nat Comm article" =
         file.exists(SIG_XLSX)
 )
-dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 epi <- readRDS(EPI_RDS)
 
@@ -174,6 +187,27 @@ for (s in names(sigs)) {
     score_cols <- c(score_cols, dst)
 }
 
+# Persist annotated object (compute branch only)
+saveRDS(epi, OUT_RDS)
+
+}  # end load-or-compute
+
+# Group cells by curated annotation (Epithelial_Annotation.R output) rather
+# than raw seurat_clusters, so violin/boxplot/ANOVA panels use the cell-type
+# label the user assigned. Falls back to seurat_clusters only if the
+# annotation CSV is missing.
+ANNOT_CSV    <- "Results/05_Epithelial_Downstream/Annotation/annotation_per_cell.csv"
+ANNOT_LEVELS <- "Results/05_Epithelial_Downstream/Annotation/label_levels.txt"
+if (file.exists(ANNOT_CSV) && file.exists(ANNOT_LEVELS)) {
+    .a <- read.csv(ANNOT_CSV, stringsAsFactors = FALSE)
+    epi$annotation <- .a$annotation[match(colnames(epi), .a$cell)]
+    .lvls <- readLines(ANNOT_LEVELS)
+    group_factor <- factor(epi$annotation, levels = .lvls)
+} else {
+    warning("annotation files not found — falling back to seurat_clusters")
+    group_factor <- factor(epi$seurat_clusters)
+}
+
 # ============================================================
 # Boxplot per cluster (저자 repo Seqwell_Combined_E.R:603-614 정확 재현) ----
 # ============================================================
@@ -189,17 +223,19 @@ for (s in names(sigs)) {
 #   ggsave(file=paste0(name_feature,"_PCA_boxplot.eps"),width = 20,height = 20,units = "cm")
 make_boxplot <- function(sc) {
     BOX_df <- data.frame(
-        id = factor(epi$seurat_clusters),
+        id = group_factor,
         value = epi@meta.data[[sc]]
     )
     ggplot(BOX_df, aes(id, value, fill = id)) +
         geom_boxplot(notch = FALSE) +
+        scale_fill_manual(values = utils_cb_palette(nlevels(BOX_df$id))) +
         stat_summary(
             fun = mean, geom = "point",
             size = 20, colour = "blue", shape = 95
         ) +
         ggtitle(sub("_Score$", "", sc)) +
-        NoLegend()
+        NoLegend() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 for (sc in score_cols) {
@@ -217,17 +253,19 @@ for (sc in score_cols) {
 # Paper Fig 2e/f 본문에 "signature score violin plots across all clusters" 명시.
 make_violin <- function(sc) {
     BOX_df <- data.frame(
-        id = factor(epi$seurat_clusters),
+        id = group_factor,
         value = epi@meta.data[[sc]]
     )
     ymax <- max(BOX_df$value, na.rm = TRUE)
     ggplot(BOX_df, aes(id, value, fill = id)) +
         geom_violin() +
+        scale_fill_manual(values = utils_cb_palette(nlevels(BOX_df$id))) +
         stat_compare_means(method = "anova",
                            label.x = 3, label.y = ymax + 0.05) +
         ggtitle(sub("_Score$", "", sc)) +
         NoLegend() +
-        theme(text = element_text(size = 11))
+        theme(text = element_text(size = 11),
+              axis.text.x = element_text(angle = 45, hjust = 1))
 }
 
 for (sc in score_cols) {
@@ -243,8 +281,8 @@ for (sc in score_cols) {
 # scale_color_gradientn(colours = c("blue","green","yellow","red"),
 #                        limits = c(0, max(V1)))
 paper_grad <- function(score_vec) {
-    scale_color_gradientn(
-        colours = c("blue", "green", "yellow", "red"),
+    scale_color_viridis_c(
+        option = "viridis",
         limits = c(0, max(score_vec, na.rm = TRUE))
     )
 }
@@ -271,7 +309,7 @@ anova_rows <- list()
 tukey_rows <- list()
 for (sc in score_cols) {
     df <- data.frame(
-        cluster = factor(epi$seurat_clusters),
+        cluster = group_factor,
         score = epi@meta.data[[sc]]
     )
     fit <- aov(score ~ cluster, data = df)
@@ -308,6 +346,6 @@ write.csv(tukey_df,
 # ============================================================
 # Save ----
 # ============================================================
-saveRDS(epi, OUT_RDS)
+# Note: saveRDS(epi, OUT_RDS) happens inside the compute branch above.
 message("Done. Outputs in: ", OUT_DIR)
 message("Annotated object: ", OUT_RDS)

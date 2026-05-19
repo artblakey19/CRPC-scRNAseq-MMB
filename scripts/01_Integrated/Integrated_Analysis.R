@@ -15,7 +15,7 @@ plan("multicore", workers = 30)
 options(future.globals.maxSize = 128 * 1024^3)
 bpp <- MulticoreParam(workers = 30, RNGseed = 42)
 
-source("scRNA_utils.R")
+source("scripts/00_utils/scRNA_utils.R")
 
 run_copykat <- TRUE
 copykat_cores <- 30
@@ -33,10 +33,24 @@ if (run_copykat) {
     library(copykat)
 }
 
+# Load-or-compute: when the integrated object already exists, skip the heavy
+# QC / scDblFinder / SCT / Harmony / SingleR / copyKAT pipeline and just reload
+# it to regenerate figures. Each compute block below is guarded by `computed`;
+# the figure/ggsave blocks run in both modes.
+INT_RDS  <- "Results/01_Integrated/combined_CRPC.rds"
+computed <- !file.exists(INT_RDS)
+if (!computed) {
+    message("Loading cached ", INT_RDS,
+            " — skipping compute, regenerating figures")
+    combined_CRPC <- readRDS(INT_RDS)
+}
+
+if (computed) {
+
 # Load 3 Samples ----
-p1 <- Read10X(data.dir = "Raw data/CRPC1/filtered_feature_bc_matrix/")
-p2 <- Read10X(data.dir = "Raw data/CRPC2/filtered_feature_bc_matrix/")
-p3 <- Read10X(data.dir = "Raw data/CRPC3/filtered_feature_bc_matrix/")
+p1 <- Read10X(data.dir = "Raw_data/CRPC1/filtered_feature_bc_matrix/")
+p2 <- Read10X(data.dir = "Raw_data/CRPC2/filtered_feature_bc_matrix/")
+p3 <- Read10X(data.dir = "Raw_data/CRPC3/filtered_feature_bc_matrix/")
 # Create Seurat Objects
 s1 <- CreateSeuratObject(counts = p1, project = "CRPC1", min.cells = 3, min.features = 200)
 s2 <- CreateSeuratObject(counts = p2, project = "CRPC2", min.cells = 3, min.features = 200)
@@ -69,11 +83,12 @@ combined_CRPC_raw <- merge(s1,
 # QC ----
 # Check MT gene ratio
 combined_CRPC_raw[["percent.mt"]] <- PercentageFeatureSet(combined_CRPC_raw, pattern = "^MT-")
+patient_cols <- utils_cb_palette(dplyr::n_distinct(combined_CRPC_raw$orig.ident))
 p <- VlnPlot(combined_CRPC_raw,
     features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
-    group.by = "orig.ident", ncol = 3, pt.size = 0
+    group.by = "orig.ident", ncol = 3, pt.size = 0, cols = patient_cols
 )
-ggsave("Results/QC/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8, bg = "white")
+ggsave("Results/01_Integrated/QC/mt_by_patient_VlnPlot.png", plot = p, width = 12, height = 8, bg = "white")
 
 # VlnPlot with threshold lines to verify QC cutoffs
 qc_thresholds <- list(
@@ -84,7 +99,7 @@ qc_thresholds <- list(
 qc_vln <- lapply(names(qc_thresholds), function(feat) {
     vp <- VlnPlot(combined_CRPC_raw,
         features = feat,
-        group.by = "orig.ident", pt.size = 0
+        group.by = "orig.ident", pt.size = 0, cols = patient_cols
     ) + NoLegend()
     th <- qc_thresholds[[feat]]
     if (!is.null(th)) {
@@ -93,7 +108,7 @@ qc_vln <- lapply(names(qc_thresholds), function(feat) {
     vp
 })
 qc_vln_combined <- wrap_plots(qc_vln, ncol = 3)
-ggsave("Results/QC/QC_VlnPlot_with_thresholds.png", plot = qc_vln_combined, width = 14, height = 6, bg = "white")
+ggsave("Results/01_Integrated/QC/QC_VlnPlot_with_thresholds.png", plot = qc_vln_combined, width = 14, height = 6, bg = "white")
 
 # FeatureScatter plot - separate panels for each patient (P1, P2, P3)
 split_obj <- SplitObject(combined_CRPC_raw, split.by = "orig.ident")
@@ -103,7 +118,7 @@ scatter_plots <- lapply(names(split_obj), function(sample) {
     p1 + p2
 })
 combined_scatter <- wrap_plots(scatter_plots, ncol = 1)
-ggsave("Results/QC/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15, bg = "white")
+ggsave("Results/01_Integrated/QC/FeatureScatter_by_patient.png", plot = combined_scatter, width = 12, height = 15, bg = "white")
 
 # Filter
 combined_CRPC <- subset(combined_CRPC_raw,
@@ -115,10 +130,10 @@ combined_CRPC <- subset(combined_CRPC_raw,
 # copyKAT helper functions ----
 # All-cell copyKAT: run on the full QC-filtered object (every cell type), with
 # same-sample immune cells as the diploid reference. Outputs live under
-# Results/Integrated/copyKAT_allcells/ and carry an `allcells` file prefix to keep them
+# Results/01_Integrated/copyKAT_allcells/ and carry an `allcells` file prefix to keep them
 # distinct from the epithelial-only per-patient run
-# (Epithelial_copyKAT_perpatient.R -> Results/Epithelial/copyKAT_perpatient/).
-dir.create("Results/Integrated/copyKAT_allcells", showWarnings = FALSE, recursive = TRUE)
+# (Epithelial_copyKAT_perpatient.R -> old/, retired in favor of Numbat).
+dir.create("Results/01_Integrated/copyKAT_allcells", showWarnings = FALSE, recursive = TRUE)
 
 extract_copykat_prediction <- function(copykat_res, sample_id) {
     if (is.null(copykat_res$prediction)) {
@@ -221,7 +236,7 @@ run_copykat_sample <- function(
 combined_CRPC <- SCTransform(combined_CRPC, verbose = FALSE)
 combined_CRPC <- RunPCA(combined_CRPC, verbose = FALSE)
 # Draw elbow plot
-ggsave("Results/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15, bg = "white")
+ggsave("Results/01_Integrated/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC, ndims = 50), width = 12, height = 15, bg = "white")
 
 # Integration ----
 # Harmony Integration — preserves biological heterogeneity better than CCA
@@ -247,9 +262,13 @@ s.genes <- cc.genes.updated.2019$s.genes
 g2m.genes <- cc.genes.updated.2019$g2m.genes
 # Cell cycle scoring
 combined_CRPC <- CellCycleScoring(combined_CRPC, s.features = s.genes, g2m.features = g2m.genes)
+
+}  # end if (computed) — compute pipeline
+
 # Draw on UMAP & Save
-p <- DimPlot(combined_CRPC, group.by = "Phase", pt.size = 0.3)
-ggsave("Results/Integrated/CellCycle_Phase_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
+p <- DimPlot(combined_CRPC, group.by = "Phase", pt.size = 0.3,
+    cols = utils_cb_palette(dplyr::n_distinct(combined_CRPC$Phase)))
+ggsave("Results/01_Integrated/CellCycle_Phase_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
 
 # Annotation ----
 # Check marker genes
@@ -261,18 +280,26 @@ p <- FeaturePlot(combined_CRPC,
     ),
     ncol = 4, pt.size = 0.1
 )
-ggsave("Results/Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 19, bg = "white")
+ggsave("Results/01_Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 19, bg = "white")
 
 # Find all markers
-utils_save_all_markers(combined_CRPC, "Results/Integrated/all_markers.csv")
+if (computed) {
+    utils_save_all_markers(combined_CRPC, "Results/01_Integrated/all_markers.csv")
+}
 
 # Save cluster UMAP (annotation 전 단계 — cluster 번호로 확인)
-p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters", label = TRUE)
-ggsave("Results/Integrated/Cluster_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
+p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters",
+    label = TRUE,
+    cols = utils_cb_palette(nlevels(factor(combined_CRPC$seurat_clusters))))
+ggsave("Results/01_Integrated/Cluster_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
 
 # Save cluster UMAP by patient
-p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters", split.by = "orig.ident", label = TRUE)
-ggsave("Results/Integrated/Cluster_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
+p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "seurat_clusters",
+    split.by = "orig.ident", label = TRUE,
+    cols = utils_cb_palette(nlevels(factor(combined_CRPC$seurat_clusters))))
+ggsave("Results/01_Integrated/Cluster_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
+
+if (computed) {
 
 # SingleR Annotation ----
 # Reference: Human Primary Cell Atlas (bulk RNA-seq, broad cell types)
@@ -301,38 +328,44 @@ write.csv(
         label = singler_pred$labels,
         pruned_label = singler_pred$pruned.labels
     ),
-    "Results/Integrated/SingleR_cell_labels.csv",
+    "Results/01_Integrated/SingleR_cell_labels.csv",
     row.names = FALSE
 )
 
 # Diagnostic plots — score heatmap & delta distribution
-png("Results/Integrated/SingleR_score_heatmap.png", width = 1200, height = 900, bg = "white")
+png("Results/01_Integrated/SingleR_score_heatmap.png", width = 1200, height = 900, bg = "white")
 plotScoreHeatmap(singler_pred)
 dev.off()
 
-png("Results/Integrated/SingleR_delta_distribution.png",
+png("Results/01_Integrated/SingleR_delta_distribution.png",
     width = 1200, height = 900, bg = "white"
 )
 plotDeltaDistribution(singler_pred, ncol = 4)
 dev.off()
 
+}  # end if (computed) — SingleR
+
 # UMAP with SingleR labels (pruned — uncertain cells appear as NA/grey)
 p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "SingleR_pruned",
-    label = TRUE, repel = TRUE
+    label = TRUE, repel = TRUE,
+    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$SingleR_pruned))))
 )
-ggsave("Results/Integrated/SingleR_UMAP.png",
+ggsave("Results/01_Integrated/SingleR_UMAP.png",
     plot = p, width = 15, height = 15, bg = "white"
 )
 
 # UMAP with SingleR labels by patient
 p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "SingleR",
-    split.by = "orig.ident", label = TRUE, repel = TRUE
+    split.by = "orig.ident", label = TRUE, repel = TRUE,
+    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$SingleR))))
 )
-ggsave("Results/Integrated/SingleR_UMAP_by_patient.png",
+ggsave("Results/01_Integrated/SingleR_UMAP_by_patient.png",
     plot = p, width = 24, height = 15, bg = "white"
 )
+
+if (computed) {
 
 # Label Annotation
 combined_CRPC <- RenameIdents(
@@ -379,7 +412,7 @@ if (run_copykat) {
         pred <- run_copykat_sample(
             seu = combined_CRPC,
             sample_id = sample_id,
-            output_dir = "Results/Integrated/copyKAT_allcells",
+            output_dir = "Results/01_Integrated/copyKAT_allcells",
             normal_cells = ref$cells,
             reference_source = ref$source,
             n_cores = copykat_cores
@@ -398,10 +431,10 @@ if (run_copykat) {
     copykat_pred <- bind_rows(lapply(copykat_runs, `[[`, "prediction"))
 
     write.csv(copykat_reference_summary,
-        "Results/Integrated/copyKAT_allcells/copykat_allcells_reference_summary.csv", row.names = FALSE
+        "Results/01_Integrated/copyKAT_allcells/copykat_allcells_reference_summary.csv", row.names = FALSE
     )
     write.csv(copykat_pred,
-        "Results/Integrated/copyKAT_allcells/copykat_allcells_predictions_all_samples.csv", row.names = FALSE
+        "Results/01_Integrated/copyKAT_allcells/copykat_allcells_predictions_all_samples.csv", row.names = FALSE
     )
 
     cell_meta <- data.frame(cell = colnames(combined_CRPC)) %>%
@@ -415,7 +448,7 @@ copykat_patient_summary <- combined_CRPC@meta.data %>%
     dplyr::count(orig.ident, copykat_prediction, name = "n")
 write.csv(
     copykat_patient_summary,
-    "Results/Integrated/copyKAT_allcells/copykat_allcells_patient_summary.csv",
+    "Results/01_Integrated/copyKAT_allcells/copykat_allcells_patient_summary.csv",
     row.names = FALSE
 )
 
@@ -423,35 +456,43 @@ copykat_cluster_summary <- combined_CRPC@meta.data %>%
     dplyr::count(orig.ident, seurat_clusters, copykat_prediction, name = "n")
 write.csv(
     copykat_cluster_summary,
-    "Results/Integrated/copyKAT_allcells/copykat_allcells_cluster_summary.csv",
+    "Results/01_Integrated/copyKAT_allcells/copykat_allcells_cluster_summary.csv",
     row.names = FALSE
 )
 
+}  # end if (computed) — celltype annotation + copyKAT
+
 p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "copykat_prediction",
-    pt.size = 0.3
+    pt.size = 0.3,
+    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$copykat_prediction))))
 )
-ggsave("Results/Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP.png",
+ggsave("Results/01_Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP.png",
     plot = p, width = 10, height = 8, bg = "white"
 )
 
 p <- DimPlot(combined_CRPC,
     reduction = "umap", group.by = "copykat_prediction",
-    split.by = "orig.ident", pt.size = 0.3
+    split.by = "orig.ident", pt.size = 0.3,
+    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$copykat_prediction))))
 )
-ggsave("Results/Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP_by_patient.png",
+ggsave("Results/01_Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP_by_patient.png",
     plot = p, width = 24, height = 8, bg = "white"
 )
 
 # Save labelled UMAP
-p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE)
-ggsave("Results/Integrated/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
+p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE,
+    cols = utils_cb_palette(nlevels(factor(combined_CRPC$celltype))))
+ggsave("Results/01_Integrated/Labelled_UMAP_integrated.png", plot = p, width = 15, height = 15, bg = "white")
 
 # Save labelled UMAP by patient
-p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", split.by = "orig.ident", label = TRUE)
-ggsave("Results/Integrated/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
+p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", split.by = "orig.ident", label = TRUE,
+    cols = utils_cb_palette(nlevels(factor(combined_CRPC$celltype))))
+ggsave("Results/01_Integrated/Labelled_UMAP_by_patient.png", plot = p, width = 24, height = 15, bg = "white")
 
 # Save RDS ----
-saveRDS(combined_CRPC, "Results/Integrated/combined_CRPC.rds")
+if (computed) {
+    saveRDS(combined_CRPC, INT_RDS)
+}
 # Read RDS
-# combined_CRPC <- readRDS("Results/Integrated/combined_CRPC.rds")
+# combined_CRPC <- readRDS("Results/01_Integrated/combined_CRPC.rds")

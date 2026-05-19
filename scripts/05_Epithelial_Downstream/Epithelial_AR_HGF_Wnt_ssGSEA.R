@@ -19,10 +19,11 @@ suppressMessages({
     library(GSVA)
     library(BiocParallel)
 })
+suppressMessages(source("scripts/00_utils/scRNA_utils.R"))
 
-IN_RDS  <- "Results/Epithelial/epi_clustered.rds"
-OUT_DIR <- "Results/Epithelial/AR_HGF_Wnt_ssGSEA"
-OUT_RDS <- "Results/Epithelial/epi_ar_hgf_wnt_ssgsea.rds"
+IN_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
+OUT_DIR <- "Results/05_Epithelial_Downstream/AR_HGF_Wnt_ssGSEA"
+OUT_RDS <- "Results/05_Epithelial_Downstream/epi_ar_hgf_wnt_ssgsea.rds"
 GMT_DIR <- "Resources/msigdb_v6.0_GMTs"
 
 TARGETS <- c(
@@ -37,6 +38,15 @@ GMT_FILES <- c(
 
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 stopifnot("Input rds not found" = file.exists(IN_RDS))
+
+# ============================================================
+# Load-or-compute: skip heavy ssGSEA when OUT_RDS already exists ----
+# ============================================================
+if (file.exists(OUT_RDS)) {
+    message("Loading cached ", OUT_RDS, " — skipping ssGSEA, regenerating figures")
+    epi <- readRDS(OUT_RDS)
+    score_cols <- grep("_ssGSEA$", colnames(epi@meta.data), value = TRUE)
+} else {
 
 # ============================================================
 # Load gene sets from GMT files ----
@@ -128,13 +138,33 @@ for (nm in rownames(ssgsea_mat)) {
     score_cols <- c(score_cols, col)
 }
 
+# Persist annotated object (compute branch only)
+saveRDS(epi, OUT_RDS)
+
+}  # end load-or-compute
+
+# Group cells by curated annotation (Epithelial_Annotation.R output) rather
+# than raw seurat_clusters, so violin/boxplot/ANOVA panels use the cell-type
+# label the user assigned. Falls back to seurat_clusters only if the
+# annotation CSV is missing.
+ANNOT_CSV    <- "Results/05_Epithelial_Downstream/Annotation/annotation_per_cell.csv"
+ANNOT_LEVELS <- "Results/05_Epithelial_Downstream/Annotation/label_levels.txt"
+if (file.exists(ANNOT_CSV) && file.exists(ANNOT_LEVELS)) {
+    .a <- read.csv(ANNOT_CSV, stringsAsFactors = FALSE)
+    epi$annotation <- .a$annotation[match(colnames(epi), .a$cell)]
+    .lvls <- readLines(ANNOT_LEVELS)
+    clusters <- factor(epi$annotation, levels = .lvls)
+} else {
+    warning("annotation files not found — falling back to seurat_clusters")
+    clusters <- factor(epi$seurat_clusters)
+}
+
 # ============================================================
-# UMAP feature plots (paper-style blue→green→yellow→red) ----
+# UMAP feature plots (viridis, colorblind-safe continuous scale) ----
 # ============================================================
 paper_grad <- function(score_vec) {
     rng <- range(score_vec, na.rm = TRUE)
-    scale_color_gradientn(colours = c("blue", "green", "yellow", "red"),
-                          limits = rng)
+    scale_color_viridis_c(option = "viridis", limits = rng)
 }
 for (sc in score_cols) {
     scores <- epi@meta.data[[sc]]
@@ -149,7 +179,6 @@ for (sc in score_cols) {
 # ============================================================
 # Per-cluster violin + boxplot ----
 # ============================================================
-clusters <- factor(epi$seurat_clusters)
 for (sc in score_cols) {
     df <- data.frame(cluster = clusters, score = epi@meta.data[[sc]])
     ymax <- max(df$score, na.rm = TRUE)
@@ -157,21 +186,25 @@ for (sc in score_cols) {
 
     p_v <- ggplot(df, aes(cluster, score, fill = cluster)) +
         geom_violin(scale = "width") +
+        scale_fill_manual(values = utils_cb_palette(nlevels(clusters))) +
         stat_summary(fun = mean, geom = "point",
                      size = 6, colour = "blue", shape = 95) +
         stat_compare_means(method = "anova",
                            label.x = 3, label.y = ymax + 0.02) +
         ggtitle(title) + NoLegend() +
-        theme(text = element_text(size = 11))
+        theme(text = element_text(size = 11),
+              axis.text.x = element_text(angle = 45, hjust = 1))
     ggsave(file.path(OUT_DIR, paste0(title, "_violin.png")),
         plot = p_v, width = 20, height = 15, units = "cm", dpi = 200, bg = "white"
     )
 
     p_b <- ggplot(df, aes(cluster, score, fill = cluster)) +
         geom_boxplot(notch = FALSE, outlier.size = 0.3) +
+        scale_fill_manual(values = utils_cb_palette(nlevels(clusters))) +
         stat_summary(fun = mean, geom = "point",
                      size = 6, colour = "blue", shape = 95) +
-        ggtitle(title) + NoLegend()
+        ggtitle(title) + NoLegend() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
     ggsave(file.path(OUT_DIR, paste0(title, "_boxplot.png")),
         plot = p_b, width = 20, height = 15, units = "cm", dpi = 200, bg = "white"
     )
@@ -219,6 +252,6 @@ write.csv(round(mean_by_clu, 4),
 # ============================================================
 # Save ----
 # ============================================================
-saveRDS(epi, OUT_RDS)
+# Note: saveRDS(epi, OUT_RDS) happens inside the compute branch above.
 message("Done. Outputs in: ", OUT_DIR)
 message("Annotated object: ", OUT_RDS)

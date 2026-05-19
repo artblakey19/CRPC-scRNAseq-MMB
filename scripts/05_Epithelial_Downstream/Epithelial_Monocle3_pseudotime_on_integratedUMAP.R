@@ -17,11 +17,11 @@
 # `pseudotime` is also plotted, but only as a per-facet free-scale view.
 #
 # Inputs:
-#   Results/Epithelial/epi_clustered.rds
+#   Results/04_Epithelial_Filtered/epi_filtered_clustered.rds
 #       — integrated epithelial object; provides the Harmony-integrated `umap`
 #         reduction + orig.ident. Only the embedding, barcodes and sample label
 #         are used here — no copyKAT / pseudotime columns needed off this object.
-#   Results/Epithelial/Monocle3_persample/pseudotime_persample.csv
+#   Results/05_Epithelial_Downstream/Monocle3_persample/pseudotime_persample.csv
 #       — per-cell `pseudotime` / `pst_norm` from Epithelial_Monocle3_persample.R
 # ============================================================
 
@@ -33,9 +33,9 @@ library(ggplot2)
 # ============================================================
 # Config ----
 # ============================================================
-EPI_RDS  <- "Results/Epithelial/epi_clustered.rds"
-M3_CSV   <- "Results/Epithelial/Monocle3_persample/pseudotime_persample.csv"
-OUT_DIR  <- "Results/Epithelial/Monocle3_persample"   # alongside the persample run
+EPI_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
+M3_CSV   <- "Results/05_Epithelial_Downstream/Monocle3_persample/pseudotime_persample.csv"
+OUT_DIR  <- "Results/05_Epithelial_Downstream/Monocle3_persample"   # alongside the persample run
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # ============================================================

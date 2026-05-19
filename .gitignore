@@ -1,5 +1,5 @@
 # Raw Data and Results
-Raw data/
+Raw_data/
 Results/
 R script/
 
@@ -15,3 +15,7 @@ Resources/
 
 # h5ad data
 *.h5ad
+
+# pipeline runtime artifacts
+logs/
+.tmp_sort/

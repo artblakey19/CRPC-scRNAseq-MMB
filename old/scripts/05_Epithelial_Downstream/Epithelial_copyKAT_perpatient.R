@@ -23,6 +23,7 @@ library(ComplexHeatmap)
 library(circlize)
 library(patchwork)
 library(cluster)
+source("scripts/00_utils/scRNA_utils.R")
 
 library(future)
 plan("multicore", workers = 30)
@@ -118,11 +119,9 @@ run_copykat_patient <- function(sample_id) {
 plot_cell_dendrogram <- function(sample_id, hc, ann, sample_dir) {
     ann <- ann[hc$order, ]
     clu_levels <- sort(unique(as.character(ann$cluster)))
-    clu_cols   <- setNames(scales::hue_pal()(length(clu_levels)), clu_levels)
+    clu_cols   <- setNames(utils_cb_palette(length(clu_levels)), clu_levels)
     sub_levels <- sort(unique(as.character(ann$subclone)))
-    sub_cols   <- setNames(
-        RColorBrewer::brewer.pal(max(3, length(sub_levels)), "Set1")[seq_along(sub_levels)],
-        sub_levels)
+    sub_cols   <- setNames(utils_cb_palette(length(sub_levels)), sub_levels)
 
     png(file.path(sample_dir, paste0(sample_id, "_subclone_dendrogram.png")),
         width = 14, height = 7, units = "in", res = 200, bg = "white")
@@ -324,10 +323,8 @@ epi$subclone_id <- factor(sub("^.*_(S[0-9]+)$", "\\1", epi$copykat_subclone),
                           levels = paste0("S", sort(unique(
                               as.integer(sub("^.*_S", "",
                                   na.omit(epi$copykat_subclone)))))))
-sub_id_cols <- setNames(
-    RColorBrewer::brewer.pal(max(3, nlevels(epi$subclone_id)), "Set1")[
-        seq_len(nlevels(epi$subclone_id))],
-    levels(epi$subclone_id))
+sub_id_cols <- setNames(utils_cb_palette(nlevels(epi$subclone_id)),
+                        levels(epi$subclone_id))
 
 p_sub <- DimPlot(epi, group.by = "subclone_id", split.by = "orig.ident",
                  reduction = "umap", cols = sub_id_cols, pt.size = 0.3,
@@ -347,6 +344,7 @@ p_comp <- ggplot(comp_df, aes(seurat_clusters, n, fill = copykat_subclone)) +
     facet_wrap(~orig.ident, ncol = 1) +
     labs(x = "Seurat cluster", y = "Subclone proportion",
          title = "Subclone composition per cluster (silhouette-optimal K)") +
+    scale_fill_manual(values = utils_cb_palette(dplyr::n_distinct(comp_df$copykat_subclone))) +
     theme_classic()
 ggsave(file.path(ROOT_OUT, "Subclone_composition_by_cluster.png"),
        plot = p_comp, width = 10, height = 9, bg = "white")

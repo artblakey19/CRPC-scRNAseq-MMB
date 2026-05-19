@@ -13,6 +13,26 @@ library(Seurat)
 # Seurat generics like Assays() in scripts that source this file but don't run
 # SingleR/GSEA — see Epithelial_Analysis.R which only calls utils_save_all_markers.
 
+# Colorblind-friendly palette ----
+#' Colorblind-safe categorical colors (Okabe-Ito).
+#' @param n Number of colors needed.
+#' @return Character vector of n hex colors. For n <= 8 returns the Okabe-Ito
+#'   base palette; for n > 8 interpolates it (>8 categories are hard to
+#'   distinguish regardless of palette).
+#' Use for any discrete/categorical color or fill scale (clusters, patients,
+#' phases, etc.). For continuous scales use viridis (scale_*_viridis_c).
+utils_cb_palette <- function(n) {
+  okabe_ito <- c(
+    "#E69F00", "#56B4E9", "#009E73", "#F0E442",
+    "#0072B2", "#D55E00", "#CC79A7", "#999999"
+  )
+  if (n <= length(okabe_ito)) {
+    okabe_ito[seq_len(n)]
+  } else {
+    grDevices::colorRampPalette(okabe_ito)(n)
+  }
+}
+
 # Load & QC ----
 #' 1. Load & QC
 #' @param data_dir Path to the 10X Genomics dataset (filtered_feature_bc_matrix)

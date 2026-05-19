@@ -30,6 +30,7 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 library(patchwork)
+source("scripts/00_utils/scRNA_utils.R")
 
 library(future)
 plan("multicore", workers = 30)
@@ -40,7 +41,7 @@ options(future.globals.maxSize = 128 * 1024^3)
 # ============================================================
 ROOT_CLUSTER <- "8"        # integrated diploid anchor cluster used as root
 UMAP_DIMS    <- 1:30
-OUT_DIR      <- "Results/Epithelial/Monocle3_persample"
+OUT_DIR      <- "Results/05_Epithelial_Downstream/Monocle3_persample"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 copykat_cols <- c(
@@ -59,7 +60,7 @@ traj_markers <- c(
 # Load epithelial subset ----
 # ============================================================
 # epi_clustered + per-patient cluster-8-referenced copyKAT columns.
-epi <- readRDS("Results/Epithelial/copyKAT_perpatient/epi_copykat_perpatient.rds")
+epi <- readRDS("Results/05_Epithelial_Downstream/copyKAT_perpatient/epi_copykat_perpatient.rds")
 
 # Preserve the integrated res-0.4 clustering as a carried label. It is used for
 # root definition and as a colour overlay only — NOT for the per-patient graph.
@@ -132,7 +133,8 @@ run_patient <- function(sample_id) {
         color_cells_by = "integrated_cluster",
         label_cell_groups = FALSE, label_leaves = FALSE,
         label_branch_points = TRUE, cell_size = 0.5
-    ) + ggtitle(paste0(sample_id, " — graph by integrated cluster"))
+    ) + scale_color_manual(values = utils_cb_palette(dplyr::n_distinct(sub$integrated_cluster))) +
+        ggtitle(paste0(sample_id, " — graph by integrated cluster"))
     ggsave(file.path(out, "UMAP_graph_integrated_clusters.png"),
         plot = p_clu, width = 10, height = 8, bg = "white")
 
@@ -140,7 +142,8 @@ run_patient <- function(sample_id) {
         color_cells_by = "partition",
         label_cell_groups = TRUE, label_leaves = FALSE,
         label_branch_points = FALSE, cell_size = 0.5
-    ) + ggtitle(paste0(sample_id, " — monocle3 partitions"))
+    ) + scale_color_manual(values = utils_cb_palette(nlevels(factor(partitions(cds))))) +
+        ggtitle(paste0(sample_id, " — monocle3 partitions"))
     ggsave(file.path(out, "UMAP_partitions.png"),
         plot = p_part, width = 10, height = 8, bg = "white")
 
@@ -162,6 +165,7 @@ run_patient <- function(sample_id) {
         labs(x = "Integrated cluster (sorted by median pseudotime)",
              y = paste0("Pseudotime (root = cluster ", ROOT_CLUSTER, ")"),
              title = sample_id) +
+        scale_fill_manual(values = utils_cb_palette(dplyr::n_distinct(sub$integrated_cluster))) +
         theme_classic() + NoLegend()
     ggsave(file.path(out, "Pseudotime_by_cluster.png"),
         plot = p_box, width = 10, height = 6, bg = "white")
@@ -174,7 +178,8 @@ run_patient <- function(sample_id) {
             cds[markers, finite],
             color_cells_by = "integrated_cluster",
             min_expr = 0.1, ncol = 3
-        ) + ggtitle(sample_id)
+        ) + scale_color_manual(values = utils_cb_palette(dplyr::n_distinct(sub$integrated_cluster))) +
+            ggtitle(sample_id)
         ggsave(file.path(out, "Genes_in_pseudotime.png"),
             plot = p_genes, width = 14, height = 18, bg = "white")
     }
@@ -244,6 +249,7 @@ p_cmp <- ggplot(
     facet_wrap(~patient, ncol = 1, scales = "free_y") +
     labs(x = "Integrated cluster",
          y = paste0("Pseudotime (root = cluster ", ROOT_CLUSTER, ", per-patient)")) +
+    scale_fill_manual(values = utils_cb_palette(dplyr::n_distinct(pst_all$integrated_cluster))) +
     theme_classic() + NoLegend()
 ggsave(file.path(OUT_DIR, "Pseudotime_by_cluster_allpatients.png"),
     plot = p_cmp, width = 10, height = 10, bg = "white")
@@ -268,6 +274,7 @@ p_marker <- ggplot(marker_long, aes(pst_norm, expr, colour = patient)) +
          y = "SCT log-normalised expression",
          colour = "Patient",
          title = "Trajectory-marker dynamics across patients") +
+    scale_colour_manual(values = utils_cb_palette(dplyr::n_distinct(marker_long$patient))) +
     theme_classic()
 ggsave(file.path(OUT_DIR, "Markers_vs_pseudotime_allpatients.png"),
     plot = p_marker, width = 14, height = 18, bg = "white")
@@ -299,6 +306,7 @@ p_rank <- ggplot(rank_df, aes(patient, pst_rank,
     labs(x = "Patient", y = "Pseudotime rank (1 = earliest)",
          colour = "Integrated\ncluster",
          title = "Integrated-cluster pseudotime ordering across patients") +
+    scale_colour_manual(values = utils_cb_palette(dplyr::n_distinct(rank_df$integrated_cluster))) +
     theme_classic()
 ggsave(file.path(OUT_DIR, "Cluster_pseudotime_rank_allpatients.png"),
     plot = p_rank, width = 8, height = 7, bg = "white")
