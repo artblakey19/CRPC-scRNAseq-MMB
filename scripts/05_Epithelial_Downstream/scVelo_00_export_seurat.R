@@ -23,7 +23,7 @@ meta <- epi@meta.data %>%
     dplyr::select(any_of(c(
         "orig.ident", "seurat_clusters", "Phase",
         "nFeature_RNA", "nCount_RNA", "percent.mt",
-        "S.Score", "G2M.Score", "copykat_prediction"   # legacy carry-over
+        "S.Score", "G2M.Score"
     )))
 
 out <- cbind(cell = rownames(meta), meta, umap)

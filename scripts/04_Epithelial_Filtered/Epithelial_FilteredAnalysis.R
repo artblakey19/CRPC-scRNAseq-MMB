@@ -13,7 +13,7 @@
 #       epi_filtered_clustered.rds          최종 2차 reclustering 객체
 #       ElbowPlot.png / clustree.png / UMAP_multires.png
 #       UMAP_cluster.png / UMAP_patient.png / UMAP_split_by_patient.png
-#       CellCycle_UMAP.png / UMAP_copykat_prediction.png
+#       CellCycle_UMAP.png
 #       cluster_QC_violin.png / cluster_lineage_DotPlot.png   ← post-filter 검증
 #       all_markers.csv
 
@@ -201,19 +201,7 @@ ggsave(file.path(OUT_DIR, "CellCycle_UMAP.png"),
     plot = p_phase, width = 10, height = 7, bg = "white")
 
 # =============================================================================
-# 6. copyKAT overlay (carry-over from integrated) ----
-# =============================================================================
-copykat_cols <- c(
-    "aneuploid" = "#D7261E", "diploid" = "#1F77B4", "not.defined" = "grey80"
-)
-p_ck <- DimPlot(epi, group.by = "copykat_prediction",
-    pt.size = 0.3, cols = copykat_cols) +
-    ggtitle("copyKAT prediction (carry-over)")
-ggsave(file.path(OUT_DIR, "UMAP_copykat_prediction.png"),
-    plot = p_ck, width = 10, height = 8, bg = "white")
-
-# =============================================================================
-# 7. Post-filter QC verification ----
+# 6. Post-filter QC verification ----
 # =============================================================================
 # Stage 2.5 와 동일 형식의 QC + lineage purity figure 를 filter 후 객체에
 # 다시 그려, stromal residue 가 의도대로 제거되었는지 시각 확인.
@@ -245,7 +233,7 @@ ggsave(file.path(OUT_DIR, "cluster_lineage_DotPlot.png"),
 )
 
 # =============================================================================
-# 8. Find markers + save ----
+# 7. Find markers + save ----
 # =============================================================================
 if (computed) {
     utils_save_all_markers(epi, file.path(OUT_DIR, "all_markers.csv"))

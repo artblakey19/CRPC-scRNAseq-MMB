@@ -17,24 +17,8 @@ bpp <- MulticoreParam(workers = 30, RNGseed = 42)
 
 source("scripts/00_utils/scRNA_utils.R")
 
-run_copykat <- TRUE
-copykat_cores <- 30
-copykat_reference_celltypes <- c(
-    "T/NK cells", "Phagocytes", "Immune cells"
-)
-
-if (run_copykat) {
-    if (!requireNamespace("copykat", quietly = TRUE)) {
-        stop(
-            "copykat package is required. Install it with: remotes::install_github('navinlabcode/copykat')",
-            call. = FALSE
-        )
-    }
-    library(copykat)
-}
-
 # Load-or-compute: when the integrated object already exists, skip the heavy
-# QC / scDblFinder / SCT / Harmony / SingleR / copyKAT pipeline and just reload
+# QC / scDblFinder / SCT / Harmony / SingleR pipeline and just reload
 # it to regenerate figures. Each compute block below is guarded by `computed`;
 # the figure/ggsave blocks run in both modes.
 INT_RDS  <- "Results/01_Integrated/combined_CRPC.rds"
@@ -126,111 +110,6 @@ combined_CRPC <- subset(combined_CRPC_raw,
         nFeature_RNA < 9000 &
         percent.mt < 20
 )
-
-# copyKAT helper functions ----
-# All-cell copyKAT: run on the full QC-filtered object (every cell type), with
-# same-sample immune cells as the diploid reference. Outputs live under
-# Results/01_Integrated/copyKAT_allcells/ and carry an `allcells` file prefix to keep them
-# distinct from the epithelial-only per-patient run
-# (Epithelial_copyKAT_perpatient.R -> old/, retired in favor of Numbat).
-dir.create("Results/01_Integrated/copyKAT_allcells", showWarnings = FALSE, recursive = TRUE)
-
-extract_copykat_prediction <- function(copykat_res, sample_id) {
-    if (is.null(copykat_res$prediction)) {
-        stop("copyKAT returned no prediction table for ", sample_id, call. = FALSE)
-    }
-
-    pred <- as.data.frame(copykat_res$prediction)
-    cell_col <- intersect(c("cell.names", "cell.name", "cell", "barcode"), colnames(pred))
-    pred_col <- intersect(c("copykat.pred", "copykat_prediction", "prediction"), colnames(pred))
-
-    if (length(cell_col) == 0 || length(pred_col) == 0) {
-        stop("copyKAT prediction columns were not recognized for ", sample_id, call. = FALSE)
-    }
-
-    pred <- pred[, c(cell_col[1], pred_col[1]), drop = FALSE]
-    colnames(pred) <- c("cell", "copykat_prediction")
-    pred$copykat_sample <- sample_id
-    pred
-}
-
-select_copykat_reference_cells <- function(
-    seu,
-    sample_id,
-    reference_celltypes
-) {
-    sample_meta <- seu@meta.data[seu$orig.ident == sample_id, , drop = FALSE]
-    ref_cells <- rownames(sample_meta)[sample_meta$celltype %in% reference_celltypes]
-    reference_source <- "immune"
-
-    if (length(ref_cells) == 0) {
-        stop("No immune reference cells found for ", sample_id, call. = FALSE)
-    }
-
-    list(cells = ref_cells, source = reference_source)
-}
-
-run_copykat_sample <- function(
-    seu,
-    sample_id,
-    output_dir,
-    normal_cells = character(),
-    reference_source = "immune",
-    n_cores = 30
-) {
-    message("Running copyKAT for ", sample_id)
-
-    sample_name <- gsub("[^A-Za-z0-9_.-]+", "_", sample_id)
-    file_prefix <- paste0(sample_name, "_allcells")
-    sample_dir <- file.path(output_dir, sample_name)
-    dir.create(sample_dir, showWarnings = FALSE, recursive = TRUE)
-
-    sample_cells <- colnames(seu)[seu$orig.ident == sample_id]
-    normal_cells <- intersect(normal_cells, sample_cells)
-    norm_cell_arg <- if (length(normal_cells) > 0) normal_cells else ""
-    message("  normal reference mode: ", reference_source, " (n = ", length(normal_cells), ")")
-
-    sample_obj <- subset(seu, cells = sample_cells)
-    DefaultAssay(sample_obj) <- "RNA"
-    sample_obj[["RNA"]] <- JoinLayers(sample_obj[["RNA"]])
-
-    raw_counts <- GetAssayData(sample_obj, assay = "RNA", layer = "counts")
-    raw_counts <- as.matrix(raw_counts)
-    storage.mode(raw_counts) <- "numeric"
-
-    old_wd <- getwd()
-    on.exit(setwd(old_wd), add = TRUE)
-    setwd(sample_dir)
-    copykat_res <- copykat::copykat(
-        rawmat = raw_counts,
-        id.type = "S",
-        cell.line = "no",
-        ngene.chr = 5,
-        win.size = 25,
-        norm.cell.names = norm_cell_arg,
-        KS.cut = 0.1,
-        sam.name = file_prefix,
-        distance = "euclidean",
-        genome = "hg20",
-        n.cores = n_cores
-    )
-    setwd(old_wd)
-
-    saveRDS(copykat_res, file.path(sample_dir, paste0(file_prefix, "_copykat.rds")))
-    write.csv(
-        data.frame(cell = normal_cells, copykat_reference_source = reference_source),
-        file.path(sample_dir, paste0(file_prefix, "_copykat_reference_cells.csv")),
-        row.names = FALSE
-    )
-    pred <- extract_copykat_prediction(copykat_res, sample_id)
-    pred$copykat_reference_source <- reference_source
-    pred$copykat_reference_n <- length(normal_cells)
-    write.csv(pred, file.path(sample_dir, paste0(file_prefix, "_copykat_predictions.csv")), row.names = FALSE)
-
-    rm(sample_obj, raw_counts, copykat_res)
-    gc()
-    pred
-}
 
 # Normalization(SCTransform) & PCA ----
 combined_CRPC <- SCTransform(combined_CRPC, verbose = FALSE)
@@ -392,93 +271,7 @@ combined_CRPC <- RenameIdents(
 # Save annotation to metadata
 combined_CRPC$celltype <- Idents(combined_CRPC)
 
-# copyKAT CNV inference (all-cell) ----
-# Run per patient on QC-filtered raw RNA counts across all cell types. Immune
-# cells are used as the same-sample diploid reference.
-copykat_meta_cols <- c(
-    "copykat_prediction", "copykat_sample",
-    "copykat_reference_source", "copykat_reference_n"
-)
-
-if (run_copykat) {
-    copykat_samples <- sort(unique(combined_CRPC$orig.ident))
-
-    copykat_runs <- lapply(copykat_samples, function(sample_id) {
-        ref <- select_copykat_reference_cells(
-            seu = combined_CRPC,
-            sample_id = sample_id,
-            reference_celltypes = copykat_reference_celltypes
-        )
-        pred <- run_copykat_sample(
-            seu = combined_CRPC,
-            sample_id = sample_id,
-            output_dir = "Results/01_Integrated/copyKAT_allcells",
-            normal_cells = ref$cells,
-            reference_source = ref$source,
-            n_cores = copykat_cores
-        )
-        list(
-            reference = data.frame(
-                orig.ident = sample_id,
-                copykat_reference_source = ref$source,
-                copykat_reference_n = length(ref$cells)
-            ),
-            prediction = pred
-        )
-    })
-
-    copykat_reference_summary <- bind_rows(lapply(copykat_runs, `[[`, "reference"))
-    copykat_pred <- bind_rows(lapply(copykat_runs, `[[`, "prediction"))
-
-    write.csv(copykat_reference_summary,
-        "Results/01_Integrated/copyKAT_allcells/copykat_allcells_reference_summary.csv", row.names = FALSE
-    )
-    write.csv(copykat_pred,
-        "Results/01_Integrated/copyKAT_allcells/copykat_allcells_predictions_all_samples.csv", row.names = FALSE
-    )
-
-    cell_meta <- data.frame(cell = colnames(combined_CRPC)) %>%
-        dplyr::left_join(copykat_pred, by = "cell")
-    for (col in copykat_meta_cols) combined_CRPC[[col]] <- cell_meta[[col]]
-} else {
-    for (col in copykat_meta_cols) combined_CRPC[[col]] <- NA
-}
-
-copykat_patient_summary <- combined_CRPC@meta.data %>%
-    dplyr::count(orig.ident, copykat_prediction, name = "n")
-write.csv(
-    copykat_patient_summary,
-    "Results/01_Integrated/copyKAT_allcells/copykat_allcells_patient_summary.csv",
-    row.names = FALSE
-)
-
-copykat_cluster_summary <- combined_CRPC@meta.data %>%
-    dplyr::count(orig.ident, seurat_clusters, copykat_prediction, name = "n")
-write.csv(
-    copykat_cluster_summary,
-    "Results/01_Integrated/copyKAT_allcells/copykat_allcells_cluster_summary.csv",
-    row.names = FALSE
-)
-
-}  # end if (computed) — celltype annotation + copyKAT
-
-p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "copykat_prediction",
-    pt.size = 0.3,
-    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$copykat_prediction))))
-)
-ggsave("Results/01_Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP.png",
-    plot = p, width = 10, height = 8, bg = "white"
-)
-
-p <- DimPlot(combined_CRPC,
-    reduction = "umap", group.by = "copykat_prediction",
-    split.by = "orig.ident", pt.size = 0.3,
-    cols = utils_cb_palette(length(unique(na.omit(combined_CRPC$copykat_prediction))))
-)
-ggsave("Results/01_Integrated/copyKAT_allcells/copykat_allcells_prediction_UMAP_by_patient.png",
-    plot = p, width = 24, height = 8, bg = "white"
-)
+}  # end if (computed) — celltype annotation
 
 # Save labelled UMAP
 p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE,

@@ -10,7 +10,6 @@
 #   - cluster_QC_violin.png            cluster별 nFeature/nCount/percent.mt
 #   - cluster_lineage_DotPlot.png      epi / stromal / immune / endo marker
 #   - cluster_lineage_FeaturePlot.png  핵심 lineage marker FeaturePlot
-#   - cluster_copykat_barplot.png      cluster별 aneuploid/diploid 비율
 #   - cluster_SingleR_distribution.png HPCA SingleR_pruned 분포 (carry-over)
 #   - cluster_SingleR_table.csv
 #   - cluster_patient_table.csv        cluster × patient 교차표
@@ -85,28 +84,7 @@ ggsave(file.path(OUT_DIR, "cluster_lineage_FeaturePlot.png"),
 )
 
 # =============================================================================
-# 3. copyKAT cluster composition ----
-# =============================================================================
-# Stromal contamination cluster 는 diploid 우세인 경향. Epi 진성 cluster 는
-# ARPC vs club/hillock 에 따라 aneuploid 비율이 다양 — diploid 우세 자체가
-# 자동 배제 사유는 아님. 다른 진단과 교차 확인 용도.
-copykat_cols <- c(
-    "aneuploid" = "#D7261E", "diploid" = "#1F77B4", "not.defined" = "grey80"
-)
-p_ck <- ggplot(epi@meta.data,
-    aes(x = seurat_clusters, fill = copykat_prediction)
-) +
-    geom_bar(position = "fill") +
-    scale_fill_manual(values = copykat_cols, na.value = "grey90") +
-    labs(x = "Cluster", y = "Proportion", fill = "copyKAT",
-         title = "copyKAT prediction per cluster") +
-    theme_classic()
-ggsave(file.path(OUT_DIR, "cluster_copykat_barplot.png"),
-    plot = p_ck, width = 10, height = 6, bg = "white"
-)
-
-# =============================================================================
-# 4. SingleR (carry-over) label distribution per cluster ----
+# 3. SingleR (carry-over) label distribution per cluster ----
 # =============================================================================
 # Integrated 단계에서 부여한 HPCA-based SingleR_pruned label 분포. Stromal/immune
 # label 이 우세한 cluster 는 1차 celltype 정의 단계에서 잘못 epi 로 넘어왔을 가능성.
@@ -155,7 +133,7 @@ if (!is.null(sr_col)) {
 }
 
 # =============================================================================
-# 5. Cluster × patient cross-table ----
+# 4. Cluster × patient cross-table ----
 # =============================================================================
 # Single-patient cluster (한 환자에 거의 몰림) 는 tumor-specific subclone 일 수도
 # 있고 noise/doublet 일 수도. cell count 와 함께 봐서 판단.
@@ -180,7 +158,7 @@ dominant_patient <- epi@meta.data %>%
                      dominant_patient_n = n)
 
 # =============================================================================
-# 6. Per-cluster summary (배제 결정 종합 테이블) ----
+# 5. Per-cluster summary (배제 결정 종합 테이블) ----
 # =============================================================================
 qc_summary <- epi@meta.data %>%
     dplyr::group_by(seurat_clusters) %>%
@@ -192,23 +170,7 @@ qc_summary <- epi@meta.data %>%
         .groups = "drop"
     )
 
-copykat_long <- epi@meta.data %>%
-    dplyr::count(seurat_clusters, copykat_prediction, name = "n") %>%
-    tidyr::pivot_wider(names_from = copykat_prediction, values_from = n,
-                       values_fill = 0)
-ck_cols <- setdiff(names(copykat_long), "seurat_clusters")
-copykat_long$total_ck <- rowSums(copykat_long[, ck_cols, drop = FALSE])
-copykat_long$aneuploid_frac <- if ("aneuploid" %in% ck_cols) {
-    round(copykat_long$aneuploid / copykat_long$total_ck, 3)
-} else {
-    NA_real_
-}
-
 cluster_summary <- qc_summary %>%
-    dplyr::left_join(
-        copykat_long %>% dplyr::select(seurat_clusters, aneuploid_frac),
-        by = "seurat_clusters"
-    ) %>%
     dplyr::left_join(dominant_patient, by = "seurat_clusters")
 
 if (!is.null(dominant_singleR)) {
@@ -226,7 +188,7 @@ write.csv(cluster_summary,
 )
 
 # =============================================================================
-# 7. filter_decision.csv (수동 편집 템플릿) ----
+# 6. filter_decision.csv (수동 편집 템플릿) ----
 # =============================================================================
 # Stage 3 (Epithelial_FilteredAnalysis.R) 가 이 파일을 읽어 keep == TRUE 인
 # cluster 만 보존. 우선 모든 cluster 를 keep = TRUE 로 출력 — figure/summary
@@ -237,12 +199,10 @@ filter_decision <- cluster_summary %>%
         n_cells,
         median_nFeature,
         median_pct_mt,
-        aneuploid_frac,
         dominant_patient,
         dominant_SingleR,
         qc_flag      = NA_character_,
         lineage_call = NA_character_,
-        copykat_call = NA_character_,
         keep         = TRUE,
         rationale    = NA_character_
     )
