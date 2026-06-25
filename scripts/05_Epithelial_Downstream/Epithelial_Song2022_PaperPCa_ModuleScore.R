@@ -7,13 +7,14 @@
 #
 # DNPC cohort caveat:
 #   - AR-driven LIU_PROSTATE_CANCER_UP, SETLUR_TMPRSS2_ERG_FUSION_UP은 muted 예상.
-#   - WALLACE_PROSTATE_CANCER_UP / TOMLINS_PROSTATE_CANCER_UP이 cluster 7
-#     (ARPC remnant)에서 가장 강하게 잡힐 것.
+#   - WALLACE_PROSTATE_CANCER_UP / TOMLINS_PROSTATE_CANCER_UP이 ARPC
+#     (cluster 9)에서 가장 강하게 잡힐 것.
 
 library(Seurat)
 library(dplyr)
 library(msigdbr)
 library(ggplot2)
+library(patchwork)   # plot_annotation / `&` for split.by FeaturePlot panels
 source("scripts/00_utils/scRNA_utils.R")
 
 IN_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
@@ -100,7 +101,7 @@ set_names <- if (exists("pca_sets")) names(pca_sets) else
     sub("_sig$", "", grep("_sig$", colnames(epi@meta.data), value = TRUE))
 
 # ============================================================
-# UMAP feature plots (viridis, colorblind-safe continuous scale) ----
+# UMAP feature plots (viridis continuous scale) ----
 # ============================================================
 paper_grad <- function() scale_color_viridis_c(option = "viridis")
 for (set_name in set_names) {
@@ -109,6 +110,25 @@ for (set_name in set_names) {
         paper_grad() + ggtitle(set_name)
     ggsave(file.path(OUT_DIR, paste0("UMAP_", set_name, ".png")),
         plot = p, width = 10, height = 8, dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-sample split UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+# split.by = orig.ident -> one panel per sample (CRPC1/2/3). Shared viridis
+# limits (global score range) applied to every panel via `&` so samples are
+# directly comparable.
+n_samples <- length(unique(epi$orig.ident))
+for (set_name in set_names) {
+    sc_col <- paste0(set_name, "_sig")
+    rng <- range(epi@meta.data[[sc_col]], na.rm = TRUE)
+    p <- FeaturePlot(epi, features = sc_col, split.by = "orig.ident",
+                     pt.size = 0.3, order = TRUE) &
+        scale_color_viridis_c(option = "viridis", limits = rng)
+    p <- p + plot_annotation(title = set_name)
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", set_name, "_splitBySample.png")),
+        plot = p, width = 8 * n_samples, height = 8, dpi = 200, bg = "white"
     )
 }
 

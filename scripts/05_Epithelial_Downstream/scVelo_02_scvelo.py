@@ -34,16 +34,19 @@ OUT_DIR = f"{PROJECT}/Results/05_Epithelial_Downstream/scVelo"
 FIG_DIR = f"{OUT_DIR}/figures"
 META_CSV = f"{OUT_DIR}/epi_metadata_for_scvelo.csv"
 OUT_H5AD = f"{OUT_DIR}/epi_scvelo.h5ad"
+# Re-derived 2026-06-25 after the deterministic (seeded) re-baseline of stages
+# 02/04 — must match Epithelial_Annotation.R::cluster_to_label. Re-export the
+# seurat object (scVelo_00) before re-running so cluster IDs are consistent.
 CLUSTER_LABEL_MAP = {
-    "0": "BE 1",
-    "1": "OE 1",
-    "2": "OE 2",
-    "3": "BE 2",
-    "4": "Club-like",
-    "5": "Hillock-like 1",
-    "6": "OE 3",
-    "7": "Hillock-like 2",
-    "8": "OE 4",
+    "0": "OE 1",
+    "1": "OE 2",
+    "2": "OE 3",
+    "3": "Club-like",
+    "4": "Hillock-like 1",
+    "5": "Hillock-like 2",
+    "6": "OE 4",
+    "7": "BE 1",
+    "8": "BE 2",
     "9": "ARPC",
     "10": "Ionocyte-like",
 }

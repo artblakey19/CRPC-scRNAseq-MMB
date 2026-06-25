@@ -25,6 +25,7 @@ library(ggplot2)
 library(openxlsx)
 library(ggpubr)   # stat_compare_means — 저자 repo Seqwell_Combined_E.R:929 사용
 library(msigdbr)  # HALLMARK_ANDROGEN_RESPONSE fetch (Fig 4h / Fig 5c)
+library(patchwork)  # plot_annotation / `&` for split.by FeaturePlot panels
 source("scripts/00_utils/scRNA_utils.R")
 
 EPI_RDS   <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
@@ -127,7 +128,7 @@ if (length(sig_order) < 4) {
 #  와 동등한 신호 검출.)
 #
 # DNPC cohort caveat:
-#   - AR signaling 전반적으로 muted 예상. 그러나 cluster 7 (ARPC remnant)에서
+#   - AR signaling 전반적으로 muted 예상. 그러나 ARPC (cluster 9)에서
 #     상대적으로 강하게 검출되어야 cluster annotation 검증에 유용.
 hallmark_df <- msigdbr(species = "Homo sapiens", collection = "H")
 hallmark_ar <- unique(
@@ -276,10 +277,10 @@ for (sc in score_cols) {
 }
 
 # ============================================================
-# UMAP feature plots (저자 repo line 921 color gradient) ----
+# UMAP feature plots (viridis continuous scale) ----
 # ============================================================
-# scale_color_gradientn(colours = c("blue","green","yellow","red"),
-#                        limits = c(0, max(V1)))
+# 저자 repo line 921 (scale_color_gradientn blue->green->yellow->red) 대신
+# viridis continuous scale 사용 (limits = c(0, max)).
 paper_grad <- function(score_vec) {
     scale_color_viridis_c(
         option = "viridis",
@@ -294,6 +295,25 @@ for (sc in score_cols) {
         ggtitle(sub("_Score$", "", sc))
     ggsave(file.path(OUT_DIR, paste0("UMAP_", sub("_Score$", "", sc), ".png")),
         plot = p, width = 20, height = 20, units = "cm", dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-sample split UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+# split.by = orig.ident -> one panel per sample (CRPC1/2/3). Shared viridis
+# limits (c(0, global max), matching the combined plot) applied to every panel
+# via `&` so samples are directly comparable.
+n_samples <- length(unique(epi$orig.ident))
+for (sc in score_cols) {
+    title <- sub("_Score$", "", sc)
+    lims <- c(0, max(epi@meta.data[[sc]], na.rm = TRUE))
+    p <- FeaturePlot(epi, features = sc, split.by = "orig.ident",
+                     pt.size = 0.3, order = TRUE) &
+        scale_color_viridis_c(option = "viridis", limits = lims)
+    p <- p + plot_annotation(title = title)
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", title, "_splitBySample.png")),
+        plot = p, width = 8 * n_samples, height = 8, dpi = 200, bg = "white"
     )
 }
 

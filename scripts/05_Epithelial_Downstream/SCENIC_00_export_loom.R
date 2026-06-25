@@ -38,6 +38,9 @@ loom <- build_loom(
   title            = "CRPC epithelial annotated",
   default.embedding = NULL
 )
-add_cell_annotation(loom, meta)
+# SCopeLoomR renamed the annotation API; add_cell_annotation() no longer exists.
+# Use add_col_attr() per column (CellType/Patient are categorical -> as.annotation).
+add_col_attr(loom = loom, key = "CellType", value = meta$CellType, as.annotation = TRUE)
+add_col_attr(loom = loom, key = "Patient",  value = meta$Patient,  as.annotation = TRUE)
 close_loom(loom)
 message("wrote ", LOOM_PATH)

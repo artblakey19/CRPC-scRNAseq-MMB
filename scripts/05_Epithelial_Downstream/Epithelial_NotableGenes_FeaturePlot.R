@@ -46,7 +46,8 @@ gene_map <- c(
     "TP63"   = "TP63",    # dNp63 isoform not resolvable; gene-level only
     "GGCT"   = "GGCT",    # gamma-glutamyl cyclotransferase (added)
     "PRPS1"  = "PRPS1",   # phosphoribosyl pyrophosphate synthetase 1 (added)
-    "PNP"    = "PNP"      # purine nucleoside phosphorylase (added)
+    "PNP"    = "PNP",     # purine nucleoside phosphorylase (added)
+    "CCL2"   = "CCL2"     # C-C motif chemokine ligand 2 / MCP-1 (added)
 )
 
 epi <- readRDS(IN_RDS)

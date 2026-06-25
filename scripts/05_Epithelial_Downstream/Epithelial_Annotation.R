@@ -20,16 +20,22 @@ OUT_DIR <- "Results/05_Epithelial_Downstream/Annotation"
 OUT_RDS <- "Results/05_Epithelial_Downstream/epi_annotated.rds"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
+# Re-derived 2026-06-25 after the deterministic (seeded) re-baseline of stages
+# 02/04. Cluster integer IDs changed vs the original unseeded run; identities
+# were re-assigned from markers (ARPC=KLK2/KLK3/FOLH1, Club=SCGB3A1/MMP7/LTF,
+# Hillock=SERPINB3/KRT6A/UPK1B, BE=KRT14/TP63, Ionocyte=FOXI1/ATP6V) and approved.
+# Cell-type composition is unchanged from the original (1 ARPC / 1 Club /
+# 2 Hillock / 2 BE / 4 OE / 1 Ionocyte) — only the numbering permuted.
 cluster_to_label <- c(
-    "0"  = "BE 1",
-    "1"  = "OE 1",
-    "2"  = "OE 2",
-    "3"  = "BE 2",
-    "4"  = "Club-like",
-    "5"  = "Hillock-like 1",
-    "6"  = "OE 3",
-    "7"  = "Hillock-like 2",
-    "8"  = "OE 4",
+    "0"  = "OE 1",
+    "1"  = "OE 2",
+    "2"  = "OE 3",
+    "3"  = "Club-like",
+    "4"  = "Hillock-like 1",
+    "5"  = "Hillock-like 2",
+    "6"  = "OE 4",
+    "7"  = "BE 1",
+    "8"  = "BE 2",
     "9"  = "ARPC",
     "10" = "Ionocyte-like"
 )

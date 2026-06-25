@@ -25,6 +25,7 @@ suppressMessages({
     library(dplyr)
     library(ggplot2)
     library(ggpubr)
+    library(patchwork)  # plot_annotation / `&` for split.by FeaturePlot panels
     library(GSVA)
     library(BiocParallel)
 })
@@ -177,7 +178,7 @@ if (file.exists(ANNOT_CSV) && file.exists(ANNOT_LEVELS)) {
 }
 
 # ============================================================
-# UMAP feature plots (viridis, colorblind-safe continuous scale) ----
+# UMAP feature plots (viridis continuous scale) ----
 # ============================================================
 paper_grad <- function(score_vec) {
     rng <- range(score_vec, na.rm = TRUE)
@@ -190,6 +191,25 @@ for (sc in score_cols) {
         ggtitle(sub("_ssGSEA$", "", sc))
     ggsave(file.path(OUT_DIR, paste0("UMAP_", sub("_ssGSEA$", "", sc), ".png")),
         plot = p, width = 20, height = 20, units = "cm", dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-sample split UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+# split.by = orig.ident -> one panel per sample (CRPC1/2/3). Shared viridis
+# limits (global score range) applied to every panel via `&` so samples are
+# directly comparable.
+n_samples <- length(unique(epi$orig.ident))
+for (sc in score_cols) {
+    title <- sub("_ssGSEA$", "", sc)
+    rng <- range(epi@meta.data[[sc]], na.rm = TRUE)
+    p <- FeaturePlot(epi, features = sc, split.by = "orig.ident",
+                     pt.size = 0.3, order = TRUE) &
+        scale_color_viridis_c(option = "viridis", limits = rng)
+    p <- p + plot_annotation(title = title)
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", title, "_splitBySample.png")),
+        plot = p, width = 8 * n_samples, height = 8, dpi = 200, bg = "white"
     )
 }
 

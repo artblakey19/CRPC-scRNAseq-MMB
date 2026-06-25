@@ -1,6 +1,6 @@
 # Epithelial_Ionocyte_FeaturePlot.R
 # FeaturePlot for candidate ionocyte markers on filtered epithelial UMAP
-# to confirm OE 5 (cluster 10) identity.
+# to confirm Ionocyte-like (cluster 10) identity.
 # Reads:  Results/05_Epithelial_Downstream/epi_annotated.rds
 # Writes: Results/05_Epithelial_Downstream/Annotation/FeaturePlot_ionocyte_markers.png
 #         Results/05_Epithelial_Downstream/Annotation/VlnPlot_ionocyte_markers.png
@@ -36,7 +36,16 @@ fp <- wrap_plots(fp_list, ncol = 3)
 ggsave(file.path(OUT_DIR, "FeaturePlot_ionocyte_markers.png"),
        plot = fp, width = 15, height = 10, bg = "white", dpi = 200)
 
-vp <- VlnPlot(epi, features = markers, group.by = "annotation",
+# VlnPlot(stack = TRUE) errors on features that are constant (all-zero) across
+# all cells — e.g. a marker SCTransform did not retain in its model. Drop those
+# for the violin (FeaturePlot above tolerates them as a grey panel).
+.dat <- GetAssayData(epi, assay = "SCT", layer = "data")[markers, , drop = FALSE]
+vln_markers <- markers[apply(.dat, 1, function(v) length(unique(v)) > 1)]
+.dropped <- setdiff(markers, vln_markers)
+if (length(.dropped) > 0) {
+    message("VlnPlot: dropping all-zero markers: ", paste(.dropped, collapse = ", "))
+}
+vp <- VlnPlot(epi, features = vln_markers, group.by = "annotation",
               pt.size = 0, stack = TRUE, flip = TRUE) +
     NoLegend() +
     ggtitle("Ionocyte candidate markers by annotation")

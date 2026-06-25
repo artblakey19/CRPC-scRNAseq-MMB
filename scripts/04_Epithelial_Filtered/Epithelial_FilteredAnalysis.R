@@ -108,6 +108,10 @@ if (computed) {
     epi <- SCTransform(epi, verbose = FALSE)
     epi <- RunPCA(epi, verbose = FALSE)
 
+    # Anchor RNG before Harmony — its k-means init uses the ambient RNG, so an
+    # unseeded run drifts (same root cause as Stage 2). Makes reclustering
+    # reproducible run-to-run.
+    set.seed(42)
     epi <- IntegrateLayers(
         object = epi,
         method = HarmonyIntegration,

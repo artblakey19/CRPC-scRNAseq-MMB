@@ -13,6 +13,10 @@ library(celldex)
 library(future)
 plan("multicore", workers = 30)
 options(future.globals.maxSize = 128 * 1024^3)
+# Fixed worker count + RNGseed makes scDblFinder reproducible across machines
+# (BiocParallel allocates one deterministic L'Ecuyer RNG stream per worker), so
+# the doublet calls — and the integrated clustering — are stable as long as
+# `workers` is not changed. Also used by SingleR below.
 bpp <- MulticoreParam(workers = 30, RNGseed = 42)
 
 source("scripts/00_utils/scRNA_utils.R")
@@ -150,15 +154,29 @@ p <- DimPlot(combined_CRPC, group.by = "Phase", pt.size = 0.3,
 ggsave("Results/01_Integrated/CellCycle_Phase_UMAP.png", plot = p, width = 10, height = 7, bg = "white")
 
 # Annotation ----
-# Check marker genes
-p <- FeaturePlot(combined_CRPC,
-    features = c(
-        "EPCAM", "KRT8", "AR", "PTPRC",
-        "VIM", "PECAM1", "ACTA2", "SYP",
-        "COL1A1", "DCN", "TPSAB1"
-    ),
-    ncol = 4, pt.size = 0.1
+# Check marker genes — 각 패널 제목에 cell-type 마커 정보 함께 표기
+marker_genes <- c(
+    EPCAM  = "Epithelial",
+    KRT8   = "Epithelial (luminal)",
+    AR     = "Luminal / AR pathway",
+    PTPRC  = "Immune",
+    VIM    = "Mesenchymal",
+    PECAM1 = "Endothelial",
+    ACTA2  = "Smooth muscle",
+    SYP    = "Neuroendocrine",
+    COL1A1 = "Fibroblast",
+    DCN    = "Fibroblast / stromal",
+    TPSAB1 = "Mast cell"
 )
+fp <- FeaturePlot(combined_CRPC,
+    features = names(marker_genes),
+    ncol = 4, pt.size = 0.1, combine = FALSE
+)
+# combine = FALSE → features 순서대로 패널 리스트 반환; 제목을 "타입 — 유전자"로 덮어씀
+fp <- lapply(seq_along(fp), function(i) {
+    fp[[i]] + ggtitle(bquote(.(marker_genes[[i]]) ~ "—" ~ italic(.(names(marker_genes)[i]))))
+})
+p <- wrap_plots(fp, ncol = 4)
 ggsave("Results/01_Integrated/FeaturePlot_markers.png", plot = p, width = 20, height = 19, bg = "white")
 
 # Find all markers

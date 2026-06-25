@@ -54,6 +54,11 @@ epi <- RunPCA(epi, verbose = FALSE)
 
 # Harmony integration on epithelial subset — corrects patient-level batch
 # effects on the PCA embedding using the split RNA layer structure.
+# Anchor the RNG: Harmony's k-means init consumes the ambient RNG stream, so
+# without a seed the embedding (and therefore the clusters) drifts every run.
+# Stage 1 reproduces because it sets a seed; Stages 2/4 previously did not —
+# this is the root cause of non-reproducible epithelial clustering.
+set.seed(42)
 epi <- IntegrateLayers(
     object = epi,
     method = HarmonyIntegration,
@@ -74,14 +79,17 @@ epi <- FindNeighbors(epi, reduction = "harmony", dims = 1:30)
 # All resolutions stored as SCT_snn_res.X columns; final ident set to 0.6.
 epi <- FindClusters(epi, resolution = res_vec)
 
-# Curate small clusters at res 0.4 based on clustree (0.2 parent inheritance):
-#   12 + 13 -> 12  (both are fragments of 0.2 cluster 10; ~80 cells total,
-#                   mostly diploid/not.defined, treated as low-quality residue)
-#   14 -> 10       (14 is small split-off of 0.2 cluster 8; 10 is its main body)
-#   15 ->  9       (15 is small split-off of 0.2 cluster 7;  9 is its main body)
-#   11 kept       (stable across 0.2 and 0.4, ~206 cells, ~62% aneuploid mixed)
-merge_map <- c("13" = "12", "14" = "10", "15" = "9")
-curated <- dplyr::recode(as.character(epi$SCT_snn_res.0.4), !!!merge_map)
+# Curate small fragment clusters at res 0.4 into their parent. Re-derive this
+# from clustree.png after every (seeded) run — cluster integer IDs are NOT stable
+# across reruns, so a hard-coded map silently mis-merges. Empty = keep raw res-0.4
+# clusters; fill after reviewing clustree.
+# (The previous unseeded run used c("13"="12","14"="10","15"="9").)
+merge_map <- character()
+curated <- if (length(merge_map) > 0) {
+    dplyr::recode(as.character(epi$SCT_snn_res.0.4), !!!merge_map)
+} else {
+    as.character(epi$SCT_snn_res.0.4)
+}
 epi$seurat_clusters <- factor(curated,
     levels = as.character(sort(unique(as.integer(curated)))))
 Idents(epi) <- "seurat_clusters"

@@ -1,0 +1,355 @@
+# Epithelial_Bluemn2017_pseudobulk_GSEA.R
+# Bluemn et al. 2017 Cancer Cell, Figure 4A/4B 재현 — 단, "tumor 간 DNPC vs ARPC"가
+# 아니라 본 cohort의 filtered epithelial cluster 간 contrast로 변환.
+#   원 논문 Fig 4A/4B: edgeR로 DNPC tumor vs ARPC tumor DE → preranked GSEA로
+#   APIPC/FGF/MAPK/MEK-ERK/EMT 양성, Androgen response 음성 enrichment.
+#   여기서는: pseudobulk (patient × cluster) DESeq2로
+#       Club-like      vs ARPC
+#       Hillock-like 1 vs ARPC
+#       Hillock-like 2 vs ARPC
+#       BE 1           vs ARPC
+#       BE 2           vs ARPC
+#   를 검정하고 동일한 6종 Bluemn 패널에 대해 fgsea preranked로 NES 막대그래프
+#   (Fig 4B 스타일) + running enrichment plot (Fig 4A 스타일) 생성.
+#   Hillock-like / BE 모두 sub-cluster를 합치지 않고 각각 contrast (PI 가설 검정용,
+#   memory: project_pi_hypothesis_be12_is_dnpc, project_be_vs_arpc_bluemn_gsea).
+#
+# Cohort caveat (memory):
+#   - 본 cohort는 DNPC late-stage이고 ARPC는 transcriptional AR-positive "remnant".
+#   - 이 그림은 cross-sectional cluster contrast일 뿐, ARPC→Club/Hillock 방향성
+#     trajectory를 주장하지 않는다. ARPC를 reference로 둔 것은 부호 해석 편의일 뿐.
+#   - BE 1/2 benign vs malignant 미확정 (project_epi_benign_malignant_unknown).
+#
+# Design 선택 (관례적 default):
+#   - pseudobulk: RNA raw counts를 patient × group으로 합산 (3 patient = 3 replicate).
+#   - DESeq2 paired design ~ patient + group (동일 3 patient가 양 arm 모두 기여).
+#   - ranking metric: DESeq2 Wald stat (fgsea preranked 표준 입력).
+#   - gene sets: Epithelial_Bluemn2017_ssGSEA.R와 동일한 MSigDB v6.0 6종 패널.
+#
+# 기존 Epithelial_Bluemn2017_ssGSEA.R(per-cell ssGSEA)는 건드리지 않는 별도 스크립트.
+
+suppressMessages({
+    library(Seurat)
+    library(Matrix)
+    library(DESeq2)
+    library(fgsea)
+    library(dplyr)
+    library(ggplot2)
+    library(patchwork)
+})
+suppressMessages(source("scripts/00_utils/scRNA_utils.R"))
+
+IN_RDS  <- "Results/05_Epithelial_Downstream/epi_annotated.rds"
+OUT_DIR <- "Results/05_Epithelial_Downstream/Bluemn2017_pseudobulk_GSEA"
+GMT_DIR <- "Resources/msigdb_v6.0_GMTs"
+
+# 6종 Bluemn 패널 (Fig 4B) — ssGSEA 스크립트와 동일.
+TARGETS <- c(
+    "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION",
+    "MEK_UP.V1_UP",
+    "ACEVEDO_FGFR1_TARGETS_IN_PROSTATE_CANCER_MODEL_UP",
+    "GO_REGULATION_OF_ERK1_AND_ERK2_CASCADE",
+    "GO_POSITIVE_REGULATION_OF_MAPK_CASCADE",
+    "HALLMARK_ANDROGEN_RESPONSE"
+)
+GMT_FILES <- c(
+    "h.all.v6.0.symbols.gmt",
+    "c2.cgp.v6.0.symbols.gmt",
+    "c5.bp.v6.0.symbols.gmt",
+    "c6.all.v6.0.symbols.gmt"
+)
+# 그림용 짧은 라벨 + 표시 순서 (Fig 4B: EMT 위, Androgen response 맨 아래).
+LABELS <- c(
+    "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION"        = "EMT (Hallmark)",
+    "MEK_UP.V1_UP"                                      = "MEK activation (C6)",
+    "ACEVEDO_FGFR1_TARGETS_IN_PROSTATE_CANCER_MODEL_UP" = "FGFR1 targets (Acevedo)",
+    "GO_REGULATION_OF_ERK1_AND_ERK2_CASCADE"            = "ERK1/2 cascade (GO)",
+    "GO_POSITIVE_REGULATION_OF_MAPK_CASCADE"            = "MAPK cascade+ (GO)",
+    "HALLMARK_ANDROGEN_RESPONSE"                        = "Androgen response (Hallmark)"
+)
+
+# Core 5종 contrast (기존 plot 유지용) — 모두 ARPC reference.
+# group 값은 공백/구두점 없이 통일 (DESeq2 안전).
+CONTRASTS <- list(
+    "Club_vs_ARPC"     = "Club",
+    "Hillock1_vs_ARPC" = "Hillock1",
+    "Hillock2_vs_ARPC" = "Hillock2",
+    "BE1_vs_ARPC"      = "BE1",
+    "BE2_vs_ARPC"      = "BE2"
+)
+# Extra 5종 contrast — 전체 epithelial cluster 포함 plot용 (OE 1-4 + Ionocyte-like)
+EXTRA_CONTRASTS <- list(
+    "OE1_vs_ARPC"          = "OE1",
+    "OE2_vs_ARPC"          = "OE2",
+    "OE3_vs_ARPC"          = "OE3",
+    "OE4_vs_ARPC"          = "OE4",
+    "IonocyteLike_vs_ARPC" = "IonocyteLike"
+)
+ALL_CONTRASTS <- c(CONTRASTS, EXTRA_CONTRASTS)
+# 그림 범례용 표시명 (공백 살림, 표시 순서)
+DISPLAY <- c(
+    "Club_vs_ARPC"         = "Club-like vs ARPC",
+    "Hillock1_vs_ARPC"     = "Hillock-like 1 vs ARPC",
+    "Hillock2_vs_ARPC"     = "Hillock-like 2 vs ARPC",
+    "BE1_vs_ARPC"          = "BE 1 vs ARPC",
+    "BE2_vs_ARPC"          = "BE 2 vs ARPC",
+    "OE1_vs_ARPC"          = "OE 1 vs ARPC",
+    "OE2_vs_ARPC"          = "OE 2 vs ARPC",
+    "OE3_vs_ARPC"          = "OE 3 vs ARPC",
+    "OE4_vs_ARPC"          = "OE 4 vs ARPC",
+    "IonocyteLike_vs_ARPC" = "Ionocyte-like vs ARPC"
+)
+REF_GROUP <- "ARPC"
+
+dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+stopifnot("Input rds not found" = file.exists(IN_RDS))
+
+# ============================================================
+# Gene sets from local v6.0 GMTs ----
+# ============================================================
+read_gmt <- function(path) {
+    lines <- readLines(path, warn = FALSE)
+    sets <- lapply(lines, function(l) {
+        f <- strsplit(l, "\t", fixed = TRUE)[[1]]
+        list(name = f[1], genes = f[-(1:2)])
+    })
+    out <- lapply(sets, `[[`, "genes")
+    names(out) <- vapply(sets, `[[`, character(1), "name")
+    out
+}
+all_sets <- list()
+for (gmt in GMT_FILES) {
+    p <- file.path(GMT_DIR, gmt)
+    if (!file.exists(p)) stop("Missing GMT: ", p)
+    all_sets <- c(all_sets, read_gmt(p))
+}
+missing <- setdiff(TARGETS, names(all_sets))
+if (length(missing) > 0) stop("Sets not found in v6.0 GMTs: ", paste(missing, collapse = ", "))
+gene_sets <- all_sets[TARGETS]
+for (nm in names(gene_sets)) message(sprintf("  %s: %d genes (v6.0)", nm, length(gene_sets[[nm]])))
+
+# ============================================================
+# Pseudobulk: sum RNA counts by patient × group ----
+# ============================================================
+epi <- readRDS(IN_RDS)
+DefaultAssay(epi) <- "RNA"
+message("Loaded: ", IN_RDS, " | cells=", ncol(epi), " genes=", nrow(epi))
+
+md <- epi@meta.data
+ann <- as.character(md$annotation)
+# annotation → CONTRASTS의 공백 없는 group 값으로 매핑.
+grp <- dplyr::case_when(
+    ann == "ARPC"            ~ "ARPC",
+    ann == "Club-like"       ~ "Club",
+    ann == "Hillock-like 1"  ~ "Hillock1",
+    ann == "Hillock-like 2"  ~ "Hillock2",
+    ann == "BE 1"            ~ "BE1",
+    ann == "BE 2"            ~ "BE2",
+    ann == "OE 1"            ~ "OE1",
+    ann == "OE 2"            ~ "OE2",
+    ann == "OE 3"            ~ "OE3",
+    ann == "OE 4"            ~ "OE4",
+    ann == "Ionocyte-like"   ~ "IonocyteLike",
+    TRUE                     ~ NA_character_
+)
+md$group   <- grp
+md$patient <- as.character(md$orig.ident)
+
+needed <- c(REF_GROUP, unlist(ALL_CONTRASTS, use.names = FALSE))
+keep_cell <- !is.na(md$group) & md$group %in% needed
+message("Cells used (10 contrasts + ARPC): ", sum(keep_cell), " / ", nrow(md))
+
+counts <- GetAssayData(epi, assay = "RNA", layer = "counts")[, keep_cell, drop = FALSE]
+md_k   <- md[keep_cell, ]
+pb_key <- paste(md_k$patient, md_k$group, sep = "__")
+
+# cells × pseudobulk indicator → genes × pseudobulk count matrix
+ind <- Matrix::sparse.model.matrix(~ 0 + factor(pb_key))
+colnames(ind) <- levels(factor(pb_key))
+pb <- as.matrix(counts %*% ind)
+storage.mode(pb) <- "integer"
+
+coldata <- data.frame(
+    pb_key  = colnames(pb),
+    patient = sub("__.*$", "", colnames(pb)),
+    group   = sub("^.*__", "", colnames(pb)),
+    stringsAsFactors = FALSE
+)
+ncell <- as.integer(table(pb_key)[coldata$pb_key])
+coldata$n_cells <- ncell
+message("Pseudobulk profiles (patient × group):")
+print(coldata[, c("patient", "group", "n_cells")])
+
+saveRDS(list(pb = pb, coldata = coldata), file.path(OUT_DIR, "pseudobulk_counts.rds"))
+write.csv(coldata, file.path(OUT_DIR, "pseudobulk_design.csv"), row.names = FALSE)
+
+# ============================================================
+# Per-contrast DESeq2 (paired) + fgsea preranked ----
+# ============================================================
+run_contrast <- function(test_group) {
+    sel <- coldata$group %in% c(REF_GROUP, test_group)
+    cd  <- coldata[sel, ]
+    cd$group   <- factor(cd$group, levels = c(REF_GROUP, test_group))  # ARPC = reference
+    cd$patient <- factor(cd$patient)
+    m <- pb[, sel, drop = FALSE]
+    m <- m[rowSums(m) >= 10, ]  # 저발현 유전자 제거 → ranking 안정화
+
+    dds <- DESeqDataSetFromMatrix(m, colData = cd, design = ~ patient + group)
+    dds <- DESeq(dds, quiet = TRUE)
+    res <- results(dds, contrast = c("group", test_group, REF_GROUP))  # +LFC = up vs ARPC
+    res_df <- as.data.frame(res)
+    res_df$gene <- rownames(res_df)
+
+    ranks <- res_df$stat
+    names(ranks) <- res_df$gene
+    ranks <- sort(ranks[is.finite(ranks)], decreasing = TRUE)
+
+    set.seed(1)
+    fg <- fgsea(pathways = gene_sets, stats = ranks, eps = 0,
+                minSize = 5, maxSize = Inf)
+    list(res = res_df[order(res_df$stat, decreasing = TRUE), ], fgsea = fg, ranks = ranks)
+}
+
+results_list <- lapply(ALL_CONTRASTS, function(g) run_contrast(g))
+names(results_list) <- names(ALL_CONTRASTS)
+
+# fgsea 결과 취합
+fg_all <- bind_rows(lapply(names(results_list), function(cn) {
+    fg <- results_list[[cn]]$fgsea
+    data.frame(
+        contrast = cn,
+        pathway  = fg$pathway,
+        label    = unname(LABELS[fg$pathway]),
+        NES      = fg$NES,
+        ES       = fg$ES,
+        pval     = fg$pval,
+        padj     = fg$padj,
+        size     = fg$size,
+        leadingEdge = vapply(fg$leadingEdge, paste, character(1), collapse = ";")
+    )
+}))
+write.csv(fg_all, file.path(OUT_DIR, "fgsea_results.csv"), row.names = FALSE)
+
+# DESeq2 결과 저장
+for (cn in names(results_list)) {
+    write.csv(results_list[[cn]]$res,
+              file.path(OUT_DIR, paste0("DESeq2_", cn, ".csv")), row.names = FALSE)
+}
+
+# ============================================================
+# Figure 4B 스타일: NES 막대그래프 (두 contrast 묶음 + FDR 별표) ----
+# ============================================================
+# 별표는 논문 Fig 4B 기준: ***FDR<0.0005, **FDR<0.005, *FDR<0.05.
+stars_of <- function(p) ifelse(is.na(p), "ns",
+    ifelse(p < 5e-4, "***", ifelse(p < 5e-3, "**", ifelse(p < 0.05, "*", "ns"))))
+
+# fg_all에 표시용 컬럼 (raw contrast key는 contrast_key로 보존)
+fg_all$contrast_key <- fg_all$contrast
+fg_all$label        <- factor(fg_all$label, levels = rev(unname(LABELS[TARGETS])))
+fg_all$contrast     <- factor(unname(DISPLAY[fg_all$contrast_key]),
+                              levels = unname(DISPLAY[names(ALL_CONTRASTS)]))
+fg_all$stars        <- stars_of(fg_all$padj)
+fg_all$hjust        <- ifelse(fg_all$NES >= 0, -0.2, 1.2)
+
+# --- Core (Hillock/Club/BE) 5개 plot (기존 그대로 유지) ---
+fg_core <- fg_all[fg_all$contrast_key %in% names(CONTRASTS), ]
+fg_core$contrast <- droplevels(fg_core$contrast)
+
+pal_n <- utils_cb_palette(length(CONTRASTS))  # Okabe-Ito 5색
+xpad <- max(abs(fg_core$NES), na.rm = TRUE) * 0.18
+
+p_bar <- ggplot(fg_core, aes(x = NES, y = label, fill = contrast)) +
+    geom_col(position = position_dodge(width = 0.8), width = 0.75) +
+    geom_vline(xintercept = 0, linewidth = 0.4, colour = "grey40") +
+    geom_text(aes(label = stars, hjust = hjust),
+              position = position_dodge(width = 0.8), size = 3.2) +
+    scale_fill_manual(values = pal_n, name = NULL) +
+    scale_x_continuous(expand = expansion(mult = c(0.12, 0.12))) +
+    coord_cartesian(xlim = c(min(fg_core$NES) - xpad, max(fg_core$NES) + xpad)) +
+    labs(x = "Normalized Enrichment Score (NES)\n(+ = up vs ARPC)", y = NULL,
+         title = "Bluemn 2017 panel — pseudobulk preranked GSEA",
+         subtitle = "Club-like / Hillock-like 1/2 / BE 1/2 vs ARPC (DESeq2 paired, ranked by Wald stat)") +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "top",
+          legend.text = element_text(size = 9),
+          panel.grid.major.y = element_blank()) +
+    guides(fill = guide_legend(nrow = 2, byrow = TRUE))
+
+ggsave(file.path(OUT_DIR, "NES_barplot_Fig4B_style.png"),
+       plot = p_bar, width = 24, height = 16, units = "cm", dpi = 220, bg = "white")
+
+# --- All clusters (OE 1-4 + Ionocyte-like 추가) plot ---
+pal_all <- utils_cb_palette(length(ALL_CONTRASTS))  # 10색 (Okabe-Ito interpolated)
+xpad_all <- max(abs(fg_all$NES), na.rm = TRUE) * 0.18
+
+p_bar_all <- ggplot(fg_all, aes(x = NES, y = label, fill = contrast)) +
+    geom_col(position = position_dodge(width = 0.85), width = 0.8) +
+    geom_vline(xintercept = 0, linewidth = 0.4, colour = "grey40") +
+    geom_text(aes(label = stars, hjust = hjust),
+              position = position_dodge(width = 0.85), size = 2.6) +
+    scale_fill_manual(values = pal_all, name = NULL) +
+    scale_x_continuous(expand = expansion(mult = c(0.12, 0.12))) +
+    coord_cartesian(xlim = c(min(fg_all$NES) - xpad_all, max(fg_all$NES) + xpad_all)) +
+    labs(x = "Normalized Enrichment Score (NES)\n(+ = up vs ARPC)", y = NULL,
+         title = "Bluemn 2017 panel — pseudobulk preranked GSEA (all epithelial clusters)",
+         subtitle = "Club-like / Hillock-like 1/2 / BE 1/2 / OE 1-4 / Ionocyte-like vs ARPC (DESeq2 paired, Wald stat)") +
+    theme_bw(base_size = 12) +
+    theme(legend.position = "top",
+          legend.text = element_text(size = 8),
+          panel.grid.major.y = element_blank()) +
+    guides(fill = guide_legend(nrow = 3, byrow = TRUE))
+
+ggsave(file.path(OUT_DIR, "NES_barplot_Fig4B_style_all_clusters.png"),
+       plot = p_bar_all, width = 30, height = 20, units = "cm", dpi = 220, bg = "white")
+
+# ============================================================
+# Figure 4A 스타일: running enrichment plot ----
+# ============================================================
+# 핵심 두 set만: Androgen response(음성 예상) + EMT(양성 예상). 각 contrast별.
+HIGHLIGHT <- c("HALLMARK_ANDROGEN_RESPONSE",
+               "HALLMARK_EPITHELIAL_MESENCHYMAL_TRANSITION")
+enr_panels <- list()
+for (cn in names(results_list)) {
+    ranks <- results_list[[cn]]$ranks
+    fg    <- results_list[[cn]]$fgsea
+    for (pw in HIGHLIGHT) {
+        st <- fg[fg$pathway == pw, ]
+        ttl <- sprintf("%s\n%s | NES=%.2f, FDR=%.1e",
+                       DISPLAY[[cn]], LABELS[[pw]], st$NES, st$padj)
+        enr_panels[[paste(cn, pw)]] <-
+            plotEnrichment(gene_sets[[pw]], ranks) +
+            labs(title = ttl) +
+            theme(plot.title = element_text(size = 9))
+    }
+}
+
+# --- Core 5 contrast 패널 (기존 file 그대로 유지) ---
+# row-major (contrast 외부, pathway 내부): t() 후 as.vector → c1_h1,c1_h2,c2_h1,...
+core_keys <- as.vector(t(outer(names(CONTRASTS), HIGHLIGHT, paste)))
+enr_core  <- enr_panels[core_keys]
+p_enr <- wrap_plots(enr_core, ncol = 2) +
+    plot_annotation(title = "Running enrichment — preranked by DESeq2 Wald stat (vs ARPC)")
+ggsave(file.path(OUT_DIR, "RunningEnrichment_Fig4A_style.png"),
+       plot = p_enr, width = 26, height = 30, units = "cm", dpi = 200, bg = "white")
+
+# --- All 10 contrast 패널 (신규) ---
+all_keys <- as.vector(t(outer(names(ALL_CONTRASTS), HIGHLIGHT, paste)))
+enr_all  <- enr_panels[all_keys]
+p_enr_all <- wrap_plots(enr_all, ncol = 2) +
+    plot_annotation(title = "Running enrichment — all epithelial clusters vs ARPC (DESeq2 Wald stat)")
+ggsave(file.path(OUT_DIR, "RunningEnrichment_Fig4A_style_all_clusters.png"),
+       plot = p_enr_all, width = 26, height = 60, units = "cm",
+       dpi = 200, bg = "white", limitsize = FALSE)
+
+# ============================================================
+# Compact 콘솔 요약 ----
+# ============================================================
+message("\n=== fgsea NES (padj) ===")
+summ <- fg_all %>%
+    mutate(cell = sprintf("%+.2f (%.1e)%s", NES, padj,
+                          ifelse(stars == "ns", "", stars))) %>%
+    select(label, contrast, cell) %>%
+    tidyr::pivot_wider(names_from = contrast, values_from = cell)
+print(as.data.frame(summ), row.names = FALSE)
+
+message("\nDone. Outputs in: ", OUT_DIR)

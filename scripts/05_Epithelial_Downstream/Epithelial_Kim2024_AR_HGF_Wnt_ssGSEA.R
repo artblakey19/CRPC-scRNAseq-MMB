@@ -1,6 +1,7 @@
-# Epithelial_AR_HGF_Wnt_ssGSEA.R
-# Epithelial 단일세포 ssGSEA — AR / HGF-MET / Wnt-β-catenin 3-axis scoring.
-# DNPC late-stage cohort에서 AR signaling 상실과 대체 driver pathway 활성을 검증.
+# Epithelial_Kim2024_AR_HGF_Wnt_ssGSEA.R
+# Kim et al. 2024 Nat Commun (s41467-024-45489-4) Fig 1a/1c/1d 재현 — 단,
+# bulk mCRPC SU2C/PCF heatmap이 아니라 본 cohort의 filtered epithelial cluster 간
+# ssGSEA per-cell scoring으로 변환. 논문 Fig 1b 패널과 동일한 3종 signature 사용.
 #
 # Signatures (3):
 #   HALLMARK_ANDROGEN_RESPONSE   -> 예상 DOWN in DNPC clusters (AR loss)
@@ -10,20 +11,22 @@
 # Gene sets sourced from MSigDB v6.0 local GMTs (Resources/msigdb_v6.0_GMTs/).
 # Method: GSVA 2.x ssgseaParam() + gsva(). Per-cell scores written to meta.data.
 # One-way ANOVA + TukeyHSD across seurat_clusters per signature.
+# 자매 스크립트: Epithelial_Kim2024_AR_HGF_Wnt_pseudobulk_GSEA.R (Fig 1b 재현).
 
 suppressMessages({
     library(Seurat)
     library(dplyr)
     library(ggplot2)
     library(ggpubr)
+    library(patchwork)  # plot_annotation / `&` for split.by FeaturePlot panels
     library(GSVA)
     library(BiocParallel)
 })
 suppressMessages(source("scripts/00_utils/scRNA_utils.R"))
 
 IN_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
-OUT_DIR <- "Results/05_Epithelial_Downstream/AR_HGF_Wnt_ssGSEA"
-OUT_RDS <- "Results/05_Epithelial_Downstream/epi_ar_hgf_wnt_ssgsea.rds"
+OUT_DIR <- "Results/05_Epithelial_Downstream/Kim2024_AR_HGF_Wnt_ssGSEA"
+OUT_RDS <- "Results/05_Epithelial_Downstream/epi_kim2024_ar_hgf_wnt_ssgsea.rds"
 GMT_DIR <- "Resources/msigdb_v6.0_GMTs"
 
 TARGETS <- c(
@@ -160,7 +163,7 @@ if (file.exists(ANNOT_CSV) && file.exists(ANNOT_LEVELS)) {
 }
 
 # ============================================================
-# UMAP feature plots (viridis, colorblind-safe continuous scale) ----
+# UMAP feature plots (viridis continuous scale) ----
 # ============================================================
 paper_grad <- function(score_vec) {
     rng <- range(score_vec, na.rm = TRUE)
@@ -173,6 +176,25 @@ for (sc in score_cols) {
         ggtitle(sub("_ssGSEA$", "", sc))
     ggsave(file.path(OUT_DIR, paste0("UMAP_", sub("_ssGSEA$", "", sc), ".png")),
         plot = p, width = 20, height = 20, units = "cm", dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-sample split UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+# split.by = orig.ident -> one panel per sample (CRPC1/2/3). Shared viridis
+# limits (global score range) applied to every panel via `&` so samples are
+# directly comparable.
+n_samples <- length(unique(epi$orig.ident))
+for (sc in score_cols) {
+    title <- sub("_ssGSEA$", "", sc)
+    rng <- range(epi@meta.data[[sc]], na.rm = TRUE)
+    p <- FeaturePlot(epi, features = sc, split.by = "orig.ident",
+                     pt.size = 0.3, order = TRUE) &
+        scale_color_viridis_c(option = "viridis", limits = rng)
+    p <- p + plot_annotation(title = title)
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", title, "_splitBySample.png")),
+        plot = p, width = 8 * n_samples, height = 8, dpi = 200, bg = "white"
     )
 }
 
