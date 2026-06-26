@@ -146,7 +146,7 @@ if (computed) {
 
     epi <- RunUMAP(epi,
         reduction = "harmony", dims = 1:30,
-        n.neighbors = 20, min.dist = 0.1, spread = 4.0
+        n.neighbors = 40, min.dist = 0.3, spread = 1.5
     )
 
     # =========================================================================

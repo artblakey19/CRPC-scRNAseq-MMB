@@ -21,7 +21,7 @@
 #       * SQUAM panel (KRT5/6A/6B/14/15/17/FGFBP1/DSG3/IVL/SBSN/S100A7).
 #       * NEURO master-TF panel = NE-null 음성대조.
 #   [E] POU2F3 tuft-cell chemosensory program (Oncogene 2023; SCN 4-TF framework):
-#       AR-/classical-NE- lineage. cohort의 FOXI1+ Ionocyte-like(cl10)의 sibling.
+#       AR-/classical-NE- lineage. cohort의 FOXI1+ Ionocyte(cl10)의 sibling.
 #       기존 어떤 시그니처로도 안 잡힌 최대 gap.
 #   [F] PNAS 2025 / CCS 2026 review: KLF5/RUNX1-coordinated mixed basal/club/hillock 정체성.
 #   [G] Bluemn FGFR/MAPK output (gene-level): DUSP6/ETV4/SPRY2/4/ID1-4 — MSigDB proxy보다

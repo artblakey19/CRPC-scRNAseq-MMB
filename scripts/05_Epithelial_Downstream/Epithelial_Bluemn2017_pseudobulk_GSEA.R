@@ -77,12 +77,13 @@ CONTRASTS <- list(
     "BE1_vs_ARPC"      = "BE1",
     "BE2_vs_ARPC"      = "BE2"
 )
-# Extra 5종 contrast — 전체 epithelial cluster 포함 plot용 (OE 1-4 + Ionocyte-like)
+# Extra 6종 contrast — 전체 epithelial cluster 포함 plot용 (OE 1-5 + Ionocyte)
 EXTRA_CONTRASTS <- list(
     "OE1_vs_ARPC"          = "OE1",
     "OE2_vs_ARPC"          = "OE2",
     "OE3_vs_ARPC"          = "OE3",
     "OE4_vs_ARPC"          = "OE4",
+    "OE5_vs_ARPC"          = "OE5",
     "IonocyteLike_vs_ARPC" = "IonocyteLike"
 )
 ALL_CONTRASTS <- c(CONTRASTS, EXTRA_CONTRASTS)
@@ -97,7 +98,8 @@ DISPLAY <- c(
     "OE2_vs_ARPC"          = "OE 2 vs ARPC",
     "OE3_vs_ARPC"          = "OE 3 vs ARPC",
     "OE4_vs_ARPC"          = "OE 4 vs ARPC",
-    "IonocyteLike_vs_ARPC" = "Ionocyte-like vs ARPC"
+    "OE5_vs_ARPC"          = "OE 5 vs ARPC",
+    "IonocyteLike_vs_ARPC" = "Ionocyte vs ARPC"
 )
 REF_GROUP <- "ARPC"
 
@@ -149,7 +151,8 @@ grp <- dplyr::case_when(
     ann == "OE 2"            ~ "OE2",
     ann == "OE 3"            ~ "OE3",
     ann == "OE 4"            ~ "OE4",
-    ann == "Ionocyte-like"   ~ "IonocyteLike",
+    ann == "OE 5"            ~ "OE5",
+    ann == "Ionocyte"   ~ "IonocyteLike",
     TRUE                     ~ NA_character_
 )
 md$group   <- grp
@@ -157,7 +160,7 @@ md$patient <- as.character(md$orig.ident)
 
 needed <- c(REF_GROUP, unlist(ALL_CONTRASTS, use.names = FALSE))
 keep_cell <- !is.na(md$group) & md$group %in% needed
-message("Cells used (10 contrasts + ARPC): ", sum(keep_cell), " / ", nrow(md))
+message("Cells used (11 contrasts + ARPC): ", sum(keep_cell), " / ", nrow(md))
 
 counts <- GetAssayData(epi, assay = "RNA", layer = "counts")[, keep_cell, drop = FALSE]
 md_k   <- md[keep_cell, ]
@@ -268,18 +271,20 @@ p_bar <- ggplot(fg_core, aes(x = NES, y = label, fill = contrast)) +
     coord_cartesian(xlim = c(min(fg_core$NES) - xpad, max(fg_core$NES) + xpad)) +
     labs(x = "Normalized Enrichment Score (NES)\n(+ = up vs ARPC)", y = NULL,
          title = "Bluemn 2017 panel — pseudobulk preranked GSEA",
-         subtitle = "Club-like / Hillock-like 1/2 / BE 1/2 vs ARPC (DESeq2 paired, ranked by Wald stat)") +
+         subtitle = paste0("Club-like / Hillock-like 1/2 / BE 1/2 vs ARPC\n",
+                           "(DESeq2 paired, ranked by Wald stat)")) +
     theme_bw(base_size = 12) +
     theme(legend.position = "top",
           legend.text = element_text(size = 9),
+          plot.subtitle = element_text(size = 9),
           panel.grid.major.y = element_blank()) +
     guides(fill = guide_legend(nrow = 2, byrow = TRUE))
 
 ggsave(file.path(OUT_DIR, "NES_barplot_Fig4B_style.png"),
        plot = p_bar, width = 24, height = 16, units = "cm", dpi = 220, bg = "white")
 
-# --- All clusters (OE 1-4 + Ionocyte-like 추가) plot ---
-pal_all <- utils_cb_palette(length(ALL_CONTRASTS))  # 10색 (Okabe-Ito interpolated)
+# --- All clusters (OE 1-5 + Ionocyte 추가) plot ---
+pal_all <- utils_cb_palette(length(ALL_CONTRASTS))  # 11색 (Okabe-Ito interpolated)
 xpad_all <- max(abs(fg_all$NES), na.rm = TRUE) * 0.18
 
 p_bar_all <- ggplot(fg_all, aes(x = NES, y = label, fill = contrast)) +
@@ -292,10 +297,12 @@ p_bar_all <- ggplot(fg_all, aes(x = NES, y = label, fill = contrast)) +
     coord_cartesian(xlim = c(min(fg_all$NES) - xpad_all, max(fg_all$NES) + xpad_all)) +
     labs(x = "Normalized Enrichment Score (NES)\n(+ = up vs ARPC)", y = NULL,
          title = "Bluemn 2017 panel — pseudobulk preranked GSEA (all epithelial clusters)",
-         subtitle = "Club-like / Hillock-like 1/2 / BE 1/2 / OE 1-4 / Ionocyte-like vs ARPC (DESeq2 paired, Wald stat)") +
+         subtitle = paste0("Club-like / Hillock-like 1/2 / BE 1/2 / OE 1-5 / Ionocyte vs ARPC\n",
+                           "(DESeq2 paired, ranked by Wald stat)")) +
     theme_bw(base_size = 12) +
     theme(legend.position = "top",
           legend.text = element_text(size = 8),
+          plot.subtitle = element_text(size = 8.5),
           panel.grid.major.y = element_blank()) +
     guides(fill = guide_legend(nrow = 3, byrow = TRUE))
 

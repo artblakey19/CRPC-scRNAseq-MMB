@@ -20,33 +20,41 @@ OUT_DIR <- "Results/05_Epithelial_Downstream/Annotation"
 OUT_RDS <- "Results/05_Epithelial_Downstream/epi_annotated.rds"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
-# Re-derived 2026-06-25 after the deterministic (seeded) re-baseline of stages
-# 02/04. Cluster integer IDs changed vs the original unseeded run; identities
-# were re-assigned from markers (ARPC=KLK2/KLK3/FOLH1, Club=SCGB3A1/MMP7/LTF,
-# Hillock=SERPINB3/KRT6A/UPK1B, BE=KRT14/TP63, Ionocyte=FOXI1/ATP6V) and approved.
-# Cell-type composition is unchanged from the original (1 ARPC / 1 Club /
-# 2 Hillock / 2 BE / 4 OE / 1 Ionocyte) — only the numbering permuted.
+# Re-derived 2026-06-26 after re-running Stage 3 at resolution 0.4 (was 0.3) on
+# the new UMAP layout (n.neighbors=40, min.dist=0.3, spread=1.5). res 0.4 splits
+# the epithelium into 12 clusters (19411 cells) that map onto the established
+# type scheme with one extra OE bucket (5 OE now). Identities assigned from
+# Song2022 BE/LE/Hillock/Club/NE module scores + HALLMARK_AR + canonical markers
+# (ARPC=KLK2/KLK3/FOLH1/AR/NKX3-1, Club=SCGB3A1/SCGB1A1/MMP7/LTF/PIGR,
+# Hillock=SERPINB3/KRT6A/KRT13/S100A8, BE=KRT5/KRT15/KRT17/DST (+KRT14 in BE 2),
+# Ionocyte=FOXI1/ATP6V0D2/ATP6V1C2/GPRC6A) and approved 2026-06-26.
+#
+# WARNING: cluster integer IDs are NOT stable across reseeded reruns. This map
+# is valid ONLY for the current Results/04 RDS (res 0.4). If Stage 3 is re-run
+# with a different resolution/filter, re-derive from markers.
+# Composition: 1 ARPC / 1 Club / 2 Hillock / 2 BE / 5 OE / 1 Ionocyte.
 cluster_to_label <- c(
-    "0"  = "OE 1",
-    "1"  = "OE 2",
-    "2"  = "OE 3",
+    "0"  = "BE 1",
+    "1"  = "OE 4",
+    "2"  = "OE 2",
     "3"  = "Club-like",
-    "4"  = "Hillock-like 1",
-    "5"  = "Hillock-like 2",
-    "6"  = "OE 4",
-    "7"  = "BE 1",
-    "8"  = "BE 2",
+    "4"  = "Hillock-like 2",
+    "5"  = "Hillock-like 1",
+    "6"  = "OE 5",
+    "7"  = "OE 1",
+    "8"  = "OE 3",
     "9"  = "ARPC",
-    "10" = "Ionocyte-like"
+    "10" = "BE 2",
+    "11" = "Ionocyte"
 )
 
-# Display order: lineage groups, OE 1..4 numeric, then Ionocyte-like as its own
+# Display order: lineage groups, OE 1..5 numeric, then Ionocyte as its own
 # rare-cell category (FOXI1+ ATP6V+ — see Epithelial_Ionocyte_FeaturePlot.R).
 label_levels <- c(
     "ARPC", "Club-like", "Hillock-like 1", "Hillock-like 2",
     "BE 1", "BE 2",
-    "OE 1", "OE 2", "OE 3", "OE 4",
-    "Ionocyte-like"
+    "OE 1", "OE 2", "OE 3", "OE 4", "OE 5",
+    "Ionocyte"
 )
 
 epi <- readRDS(IN_RDS)

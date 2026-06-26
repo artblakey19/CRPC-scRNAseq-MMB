@@ -1,6 +1,6 @@
 # Epithelial_Ionocyte_FeaturePlot.R
 # FeaturePlot for candidate ionocyte markers on filtered epithelial UMAP
-# to confirm Ionocyte-like (cluster 10) identity.
+# to confirm Ionocyte (cluster 10) identity.
 # Reads:  Results/05_Epithelial_Downstream/epi_annotated.rds
 # Writes: Results/05_Epithelial_Downstream/Annotation/FeaturePlot_ionocyte_markers.png
 #         Results/05_Epithelial_Downstream/Annotation/VlnPlot_ionocyte_markers.png

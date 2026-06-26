@@ -34,25 +34,28 @@ OUT_DIR = f"{PROJECT}/Results/05_Epithelial_Downstream/scVelo"
 FIG_DIR = f"{OUT_DIR}/figures"
 META_CSV = f"{OUT_DIR}/epi_metadata_for_scvelo.csv"
 OUT_H5AD = f"{OUT_DIR}/epi_scvelo.h5ad"
-# Re-derived 2026-06-25 after the deterministic (seeded) re-baseline of stages
-# 02/04 — must match Epithelial_Annotation.R::cluster_to_label. Re-export the
-# seurat object (scVelo_00) before re-running so cluster IDs are consistent.
+# FALLBACK ONLY. scVelo_00 now exports a barcode-keyed `annotation` column, so
+# epi_label is taken from that (renumber-safe — see "Join Seurat metadata").
+# This map is used only if that column is absent, and must match
+# Epithelial_Annotation.R::cluster_to_label for the current Stage 4 RDS
+# (re-baseline at res 0.4, 12 clusters, new UMAP params, 2026-06-26).
 CLUSTER_LABEL_MAP = {
-    "0": "OE 1",
-    "1": "OE 2",
-    "2": "OE 3",
+    "0": "BE 1",
+    "1": "OE 4",
+    "2": "OE 2",
     "3": "Club-like",
-    "4": "Hillock-like 1",
-    "5": "Hillock-like 2",
-    "6": "OE 4",
-    "7": "BE 1",
-    "8": "BE 2",
+    "4": "Hillock-like 2",
+    "5": "Hillock-like 1",
+    "6": "OE 5",
+    "7": "OE 1",
+    "8": "OE 3",
     "9": "ARPC",
-    "10": "Ionocyte-like",
+    "10": "BE 2",
+    "11": "Ionocyte",
 }
 CLUSTER_LABEL_ORDER = [
     "ARPC", "Club-like", "Hillock-like 1", "Hillock-like 2", "BE 1", "BE 2",
-    "OE 1", "OE 2", "OE 3", "OE 4", "Ionocyte-like",
+    "OE 1", "OE 2", "OE 3", "OE 4", "OE 5", "Ionocyte",
 ]
 
 os.makedirs(FIG_DIR, exist_ok=True)
@@ -110,9 +113,14 @@ if n_common < 0.5 * min(n_loom, n_meta):
 adata = adata[common].copy()
 for col in meta.columns:
     adata.obs[col] = meta.loc[adata.obs_names, col].values
-adata.obs["epi_label"] = (
-    adata.obs["seurat_clusters"].astype(str).map(CLUSTER_LABEL_MAP)
-)
+# Prefer the barcode-keyed annotation exported by scVelo_00 (renumber-safe);
+# fall back to the cluster->label map only if that column is missing.
+if "annotation" in adata.obs.columns and adata.obs["annotation"].notna().any():
+    adata.obs["epi_label"] = adata.obs["annotation"].astype(str)
+else:
+    adata.obs["epi_label"] = (
+        adata.obs["seurat_clusters"].astype(str).map(CLUSTER_LABEL_MAP)
+    )
 adata.obs["epi_label"] = pd.Categorical(
     adata.obs["epi_label"],
     categories=[x for x in CLUSTER_LABEL_ORDER if x in set(adata.obs["epi_label"])],

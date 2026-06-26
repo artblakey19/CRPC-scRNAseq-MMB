@@ -26,7 +26,22 @@ meta <- epi@meta.data %>%
         "S.Score", "G2M.Score"
     )))
 
+# Attach barcode-keyed annotation (annotation_per_cell.csv, written by
+# Epithelial_Annotation.R) so the Python side never re-derives labels from a
+# hardcoded cluster->label map — renumber-safe across reseeded reruns.
+ANNOT_CSV <- "Results/05_Epithelial_Downstream/Annotation/annotation_per_cell.csv"
+if (!file.exists(ANNOT_CSV)) {
+    stop("annotation_per_cell.csv not found — run Epithelial_Annotation.R first: ",
+         ANNOT_CSV)
+}
+annot <- read.csv(ANNOT_CSV, stringsAsFactors = FALSE)
+
 out <- cbind(cell = rownames(meta), meta, umap)
+out$annotation <- annot$annotation[match(out$cell, annot$cell)]
+if (any(is.na(out$annotation))) {
+    stop(sum(is.na(out$annotation)), " cells have no annotation match — ",
+         "annotation_per_cell.csv is out of sync with the Stage 4 RDS.")
+}
 write.csv(out, OUT_CSV, row.names = FALSE)
 
 message("Exported ", nrow(out), " cells to ", OUT_CSV)

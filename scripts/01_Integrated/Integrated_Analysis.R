@@ -124,6 +124,10 @@ ggsave("Results/01_Integrated/QC/ElbowPlot.png", plot = ElbowPlot(combined_CRPC,
 # Integration ----
 # Harmony Integration — preserves biological heterogeneity better than CCA
 # for tumor data; iterative correction on PCA embeddings.
+# Anchor the RNG before Harmony — its k-means init consumes the ambient RNG
+# stream (same root cause pinned in Stages 2/4). Makes the embedding, and
+# therefore the broad clusters, stable run-to-run.
+set.seed(42)
 combined_CRPC <- IntegrateLayers(
     object = combined_CRPC,
     method = HarmonyIntegration,
@@ -162,7 +166,8 @@ marker_genes <- c(
     PTPRC  = "Immune",
     VIM    = "Mesenchymal",
     PECAM1 = "Endothelial",
-    ACTA2  = "Smooth muscle",
+    ACTA2  = "Smooth muscle (ACTA2)",
+    MYH11  = "Smooth muscle (MYH11)",
     SYP    = "Neuroendocrine",
     COL1A1 = "Fibroblast",
     DCN    = "Fibroblast / stromal",
@@ -268,8 +273,11 @@ if (computed) {
 combined_CRPC <- RenameIdents(
     object = combined_CRPC,
     `0` = "Epithelial",
-    `1` = "Fibroblast",
-    `2` = "Epithelial",
+    # cl1/cl2 swapped vs the pre-seed run — re-verified from markers after the
+    # set.seed Harmony re-baseline (cl1 = Hillock/squamous epi: SERPINB3/KRT6A/
+    # KRT13/LY6D; cl2 = fibroblast: LUM/DCN/SFRP2/OGN/C7).
+    `1` = "Epithelial",
+    `2` = "Fibroblast",
     `3` = "Epithelial",
     `4` = "Epithelial",
     `5` = "Epithelial",

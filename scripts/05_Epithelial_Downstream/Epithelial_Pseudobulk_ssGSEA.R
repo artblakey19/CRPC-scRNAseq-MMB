@@ -50,8 +50,8 @@ md$patient <- as.character(md$orig.ident)
 cluster_order <- c(
     "ARPC", "Club-like", "Hillock-like",
     "BE 1", "BE 2",
-    "OE 1", "OE 2", "OE 3", "OE 4",
-    "Ionocyte-like"
+    "OE 1", "OE 2", "OE 3", "OE 4", "OE 5",
+    "Ionocyte"
 )
 patient_order <- sort(unique(md$patient))   # CRPC1/2/3
 
