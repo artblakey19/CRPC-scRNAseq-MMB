@@ -127,8 +127,8 @@ cat("\n=== Arm summary ===\n"); print(arm_summary, row.names = FALSE)
 # ------------------------------------------------------------------
 pair_row <- function(clusters, arm, A, B) {
     isA <- orig == A; isB <- orig == B
-    dA <- names(sort(table(clusters[isA]), TRUE))[1]
-    dB <- names(sort(table(clusters[isB]), TRUE))[1]
+    dA <- if (any(isA)) names(sort(table(clusters[isA]), TRUE))[1] else NA_character_
+    dB <- if (any(isB)) names(sort(table(clusters[isB]), TRUE))[1] else NA_character_
     data.frame(arm = arm, pair = paste(A, "/", B),
                dom_A = dA, dom_B = dB, same_cluster = (dA == dB),
                A_in_domA = round(mean(clusters[isA] == dA), 3),
@@ -136,13 +136,15 @@ pair_row <- function(clusters, arm, A, B) {
                B_in_domB = round(mean(clusters[isB] == dB), 3),
                stringsAsFactors = FALSE)
 }
+# Pairs use post-2026-06-30 labels: old OE 2/OE 3 = BE 5/BE 6 (heat-stress pair),
+# old OE 1/BE 1 = BE 2/BE 1 (over-split fragment vs its parent).
 pair_tab <- rbind(
-    pair_row(base_cl,    "1_baseline",  "OE 2", "OE 3"),
-    pair_row(rec$cluster,"2_recompute", "OE 2", "OE 3"),
-    pair_row(reg$cluster,"3_regress",   "OE 2", "OE 3"),
-    pair_row(base_cl,    "1_baseline",  "OE 1", "BE 1"),
-    pair_row(rec$cluster,"2_recompute", "OE 1", "BE 1"),
-    pair_row(reg$cluster,"3_regress",   "OE 1", "BE 1"))
+    pair_row(base_cl,    "1_baseline",  "BE 5", "BE 6"),
+    pair_row(rec$cluster,"2_recompute", "BE 5", "BE 6"),
+    pair_row(reg$cluster,"3_regress",   "BE 5", "BE 6"),
+    pair_row(base_cl,    "1_baseline",  "BE 2", "BE 1"),
+    pair_row(rec$cluster,"2_recompute", "BE 2", "BE 1"),
+    pair_row(reg$cluster,"3_regress",   "BE 2", "BE 1"))
 write.csv(pair_tab, file.path(OUT_DIR, "pair_merge_OE2OE3_OE1BE1.csv"), row.names = FALSE)
 cat("\n=== Pair co-clustering (same_cluster = pair merged into one cluster) ===\n")
 print(pair_tab, row.names = FALSE)

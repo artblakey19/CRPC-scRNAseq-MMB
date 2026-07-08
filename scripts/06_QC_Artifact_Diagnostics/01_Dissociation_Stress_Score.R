@@ -60,6 +60,13 @@ if (!"data" %in% Layers(epi[["RNA"]])) {
 Idents(epi) <- "annotation"
 ann_levels <- levels(epi$annotation)
 
+# Heat-stress target cluster: was "OE 2" before the 2026-06-30 re-identification,
+# now labelled "BE 5" (same cl2). Update here if the annotation scheme changes.
+STRESS_CLUSTER <- "BE 5"
+if (!STRESS_CLUSTER %in% ann_levels)
+    stop("Stress target '", STRESS_CLUSTER, "' not in annotation levels: ",
+         paste(ann_levels, collapse = ", "))
+
 # Restrict each signature to genes actually present; report coverage.
 present <- rownames(epi[["RNA"]])
 for (s in names(signatures)) {
@@ -122,7 +129,7 @@ for (sc in score_cols) {
     # OE 2 vs every other cluster
     tu <- as.data.frame(TukeyHSD(fit)$grp)
     tu$pair <- rownames(tu)
-    oe2 <- tu[grepl("(^|-)OE 2($|-)", tu$pair), ]
+    oe2 <- tu[grepl(paste0("(^|-)", STRESS_CLUSTER, "($|-)"), tu$pair), ]
     oe2$signature <- sc
     tuk_rows[[sc]] <- oe2[, c("signature","pair","diff","lwr","upr","p adj")]
 }
@@ -137,9 +144,10 @@ write.csv(tuk_tab, file.path(OUT_DIR, "ANOVA_TukeyHSD_OE2_vs_rest.csv"), row.nam
 cat("\n=== ANOVA (score ~ cluster) ===\n"); print(aov_tab, row.names = FALSE)
 # How many of the 11 OE2-vs-other contrasts are positive (OE2 higher) & significant?
 oe2_den <- tuk_tab[tuk_tab$signature == "Denisenko17_sc", ]
-# diff sign depends on pair ordering "A-B"; normalise so positive = OE2 higher
-oe2_den$oe2_higher <- ifelse(grepl("^OE 2-", oe2_den$pair), oe2_den$diff > 0, oe2_den$diff < 0)
-cat(sprintf("\nDenisenko17: OE 2 higher than the other cluster in %d/%d contrasts; significant (padj<0.05) in %d/%d.\n",
+# diff sign depends on pair ordering "A-B"; normalise so positive = stress-cluster higher
+oe2_den$oe2_higher <- ifelse(grepl(paste0("^", STRESS_CLUSTER, "-"), oe2_den$pair), oe2_den$diff > 0, oe2_den$diff < 0)
+cat(sprintf("\nDenisenko17: %s higher than the other cluster in %d/%d contrasts; significant (padj<0.05) in %d/%d.\n",
+            STRESS_CLUSTER,
             sum(oe2_den$oe2_higher), nrow(oe2_den),
             sum(oe2_den$oe2_higher & oe2_den$`p adj` < 0.05), nrow(oe2_den)))
 
