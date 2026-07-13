@@ -2,7 +2,7 @@
 #
 # 기존 scripts/01_Integrated/Integrated_Analysis.R 와 동일한 파이프라인이되,
 # per-sample 로 decontX (ambient RNA 제거) 를 scDblFinder 앞에 삽입한 버전.
-# 원본 결과 객체를 보존하기 위해 출력은 별도 경로(Results/01_Integrated_decontX/)로
+# 원본 결과 객체를 보존하기 위해 출력은 별도 경로(Results/01_Integrated/)로
 # 나가고, 원본 스크립트는 그대로 둔다.
 #
 # 파이프라인 순서:
@@ -44,7 +44,7 @@ DX_DIR  <- file.path(OUT_DIR, "DecontX")
 dir.create(QC_DIR, showWarnings = FALSE, recursive = TRUE)
 dir.create(DX_DIR, showWarnings = FALSE, recursive = TRUE)
 
-INT_RDS  <- file.path(OUT_DIR, "combined_CRPC_decontX.rds")
+INT_RDS  <- file.path(OUT_DIR, "combined_CRPC.rds")
 computed <- !file.exists(INT_RDS)
 if (!computed) {
     message("Loading cached ", INT_RDS,

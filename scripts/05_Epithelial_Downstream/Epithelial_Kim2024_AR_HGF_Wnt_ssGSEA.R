@@ -1,0 +1,279 @@
+# Epithelial_Kim2024_AR_HGF_Wnt_ssGSEA.R
+# Kim et al. 2024 Nat Commun (s41467-024-45489-4) Fig 1a/1c/1d 재현 — 단,
+# bulk mCRPC SU2C/PCF heatmap이 아니라 본 cohort의 filtered epithelial cluster 간
+# ssGSEA per-cell scoring으로 변환. 논문 Fig 1b 패널과 동일한 3종 signature 사용.
+#
+# Signatures (3):
+#   HALLMARK_ANDROGEN_RESPONSE   -> 예상 DOWN in DNPC clusters (AR loss)
+#   RUTELLA_RESPONSE_TO_HGF_UP   -> HGF/MET pathway 활성 (RTK bypass)
+#   FEVR_CTNNB1_TARGETS_UP       -> Wnt/β-catenin target program (lineage plasticity)
+#
+# Gene sets sourced from MSigDB v6.0 local GMTs (Resources/msigdb_v6.0_GMTs/).
+# Method: GSVA 2.x ssgseaParam() + gsva(). Per-cell scores written to meta.data.
+# One-way ANOVA + TukeyHSD across seurat_clusters per signature.
+# 자매 스크립트: Epithelial_Kim2024_AR_HGF_Wnt_pseudobulk_GSEA.R (Fig 1b 재현).
+
+suppressMessages({
+    library(Seurat)
+    library(dplyr)
+    library(ggplot2)
+    library(ggpubr)
+    library(patchwork)  # plot_annotation / `&` for split.by FeaturePlot panels
+    library(GSVA)
+    library(BiocParallel)
+})
+suppressMessages(source("scripts/00_utils/scRNA_utils.R"))
+
+IN_RDS  <- "Results/04_Epithelial_Filtered/epi_filtered_clustered.rds"
+OUT_DIR <- "Results/05_Epithelial_Downstream/Kim2024_AR_HGF_Wnt_ssGSEA"
+OUT_RDS <- "Results/05_Epithelial_Downstream/epi_kim2024_ar_hgf_wnt_ssgsea.rds"
+GMT_DIR <- "Resources/msigdb_v6.0_GMTs"
+
+TARGETS <- c(
+    "HALLMARK_ANDROGEN_RESPONSE",
+    "RUTELLA_RESPONSE_TO_HGF_UP",
+    "FEVR_CTNNB1_TARGETS_UP"
+)
+GMT_FILES <- c(
+    "h.all.v6.0.symbols.gmt",
+    "c2.cgp.v6.0.symbols.gmt"
+)
+
+dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
+stopifnot("Input rds not found" = file.exists(IN_RDS))
+
+# ============================================================
+# Load-or-compute: skip heavy ssGSEA when OUT_RDS already exists ----
+# ============================================================
+if (file.exists(OUT_RDS)) {
+    message("Loading cached ", OUT_RDS, " — skipping ssGSEA, regenerating figures")
+    epi <- readRDS(OUT_RDS)
+    score_cols <- grep("_ssGSEA$", colnames(epi@meta.data), value = TRUE)
+} else {
+
+# ============================================================
+# Load gene sets from GMT files ----
+# ============================================================
+read_gmt <- function(path) {
+    lines <- readLines(path, warn = FALSE)
+    sets <- lapply(lines, function(l) {
+        f <- strsplit(l, "\t", fixed = TRUE)[[1]]
+        list(name = f[1], genes = f[-(1:2)])
+    })
+    nms <- vapply(sets, `[[`, character(1), "name")
+    out <- lapply(sets, `[[`, "genes")
+    names(out) <- nms
+    out
+}
+
+all_sets <- list()
+for (gmt in GMT_FILES) {
+    p <- file.path(GMT_DIR, gmt)
+    if (!file.exists(p)) stop("Missing GMT: ", p)
+    all_sets <- c(all_sets, read_gmt(p))
+}
+
+missing <- setdiff(TARGETS, names(all_sets))
+if (length(missing) > 0) {
+    stop("Sets not found in v6.0 GMTs: ", paste(missing, collapse = ", "))
+}
+gene_sets <- all_sets[TARGETS]
+for (nm in names(gene_sets)) {
+    message(sprintf("  %s: %d genes (v6.0)", nm, length(gene_sets[[nm]])))
+}
+
+# ============================================================
+# Load Seurat object, normalize ----
+# ============================================================
+epi <- readRDS(IN_RDS)
+message("Loaded: ", IN_RDS, " | cells=", ncol(epi), " genes=", nrow(epi))
+
+DefaultAssay(epi) <- "RNA"
+if (!"data" %in% Layers(epi[["RNA"]])) {
+    epi <- NormalizeData(epi, assay = "RNA", verbose = FALSE)
+}
+expr <- GetAssayData(epi, assay = "RNA", layer = "data")
+
+# Restrict gene sets to genes present in the expression matrix
+present <- rownames(expr)
+for (nm in names(gene_sets)) {
+    n0 <- length(gene_sets[[nm]])
+    gene_sets[[nm]] <- intersect(gene_sets[[nm]], present)
+    message(sprintf("  %s: %d / %d genes present", nm, length(gene_sets[[nm]]), n0))
+}
+keep <- vapply(gene_sets, length, integer(1)) >= 5
+if (any(!keep)) {
+    warning("Dropping sets with <5 genes: ", paste(names(gene_sets)[!keep], collapse = ", "))
+    gene_sets <- gene_sets[keep]
+}
+
+# ============================================================
+# ssGSEA via GSVA 2.x ----
+# ============================================================
+expr_dense <- as.matrix(expr)
+param <- ssgseaParam(
+    exprData   = expr_dense,
+    geneSets   = gene_sets,
+    minSize    = 5,
+    maxSize    = Inf,
+    alpha      = 0.25,
+    normalize  = TRUE
+)
+
+bpp <- tryCatch(MulticoreParam(workers = max(1, parallel::detectCores() - 1)),
+                error = function(e) SerialParam())
+message("Running ssGSEA on ", ncol(expr_dense), " cells × ",
+        length(gene_sets), " sets ...")
+t0 <- Sys.time()
+ssgsea_mat <- gsva(param, BPPARAM = bpp, verbose = TRUE)
+message("ssGSEA done in ", round(as.numeric(Sys.time() - t0, units = "mins"), 2), " min")
+
+saveRDS(ssgsea_mat, file.path(OUT_DIR, "ssgsea_matrix.rds"))
+write.csv(t(ssgsea_mat),
+    file.path(OUT_DIR, "ssgsea_scores_per_cell.csv"),
+    row.names = TRUE
+)
+
+score_cols <- character(0)
+for (nm in rownames(ssgsea_mat)) {
+    col <- paste0(nm, "_ssGSEA")
+    epi@meta.data[[col]] <- as.numeric(ssgsea_mat[nm, colnames(epi)])
+    score_cols <- c(score_cols, col)
+}
+
+# Persist annotated object (compute branch only)
+saveRDS(epi, OUT_RDS)
+
+}  # end load-or-compute
+
+# Group cells by curated annotation (Epithelial_Annotation.R output) rather
+# than raw seurat_clusters, so violin/boxplot/ANOVA panels use the cell-type
+# label the user assigned. Falls back to seurat_clusters only if the
+# annotation CSV is missing.
+ANNOT_CSV    <- "Results/05_Epithelial_Downstream/Annotation/annotation_per_cell.csv"
+ANNOT_LEVELS <- "Results/05_Epithelial_Downstream/Annotation/label_levels.txt"
+if (file.exists(ANNOT_CSV) && file.exists(ANNOT_LEVELS)) {
+    .a <- read.csv(ANNOT_CSV, stringsAsFactors = FALSE)
+    epi$annotation <- .a$annotation[match(colnames(epi), .a$cell)]
+    .lvls <- readLines(ANNOT_LEVELS)
+    clusters <- factor(epi$annotation, levels = .lvls)
+} else {
+    warning("annotation files not found — falling back to seurat_clusters")
+    clusters <- factor(epi$seurat_clusters)
+}
+
+# ============================================================
+# UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+paper_grad <- function(score_vec) {
+    rng <- range(score_vec, na.rm = TRUE)
+    scale_color_viridis_c(option = "viridis", limits = rng)
+}
+for (sc in score_cols) {
+    scores <- epi@meta.data[[sc]]
+    p <- FeaturePlot(epi, features = sc, pt.size = 0.3, order = TRUE) +
+        paper_grad(scores) +
+        ggtitle(sub("_ssGSEA$", "", sc))
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", sub("_ssGSEA$", "", sc), ".png")),
+        plot = p, width = 20, height = 20, units = "cm", dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-sample split UMAP feature plots (viridis continuous scale) ----
+# ============================================================
+# split.by = orig.ident -> one panel per sample (CRPC1/2/3). Shared viridis
+# limits (global score range) applied to every panel via `&` so samples are
+# directly comparable.
+n_samples <- length(unique(epi$orig.ident))
+for (sc in score_cols) {
+    title <- sub("_ssGSEA$", "", sc)
+    rng <- range(epi@meta.data[[sc]], na.rm = TRUE)
+    p <- FeaturePlot(epi, features = sc, split.by = "orig.ident",
+                     pt.size = 0.3, order = TRUE) &
+        scale_color_viridis_c(option = "viridis", limits = rng)
+    p <- p + plot_annotation(title = title)
+    ggsave(file.path(OUT_DIR, paste0("UMAP_", title, "_splitBySample.png")),
+        plot = p, width = 8 * n_samples, height = 8, dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# Per-cluster violin + boxplot ----
+# ============================================================
+for (sc in score_cols) {
+    df <- data.frame(cluster = clusters, score = epi@meta.data[[sc]])
+    ymax <- max(df$score, na.rm = TRUE)
+    title <- sub("_ssGSEA$", "", sc)
+
+    p_v <- ggplot(df, aes(cluster, score, fill = cluster)) +
+        geom_violin(scale = "width") +
+        scale_fill_manual(values = utils_cb_palette(nlevels(clusters))) +
+        stat_summary(fun = mean, geom = "point",
+                     size = 6, colour = "blue", shape = 95) +
+        stat_compare_means(method = "anova",
+                           label.x = 3, label.y = ymax + 0.02) +
+        ggtitle(title) + NoLegend() +
+        theme(text = element_text(size = 11),
+              axis.text.x = element_text(angle = 45, hjust = 1))
+    ggsave(file.path(OUT_DIR, paste0(title, "_violin.png")),
+        plot = p_v, width = 20, height = 15, units = "cm", dpi = 200, bg = "white"
+    )
+
+    p_b <- ggplot(df, aes(cluster, score, fill = cluster)) +
+        geom_boxplot(notch = FALSE, outlier.size = 0.3) +
+        scale_fill_manual(values = utils_cb_palette(nlevels(clusters))) +
+        stat_summary(fun = mean, geom = "point",
+                     size = 6, colour = "blue", shape = 95) +
+        ggtitle(title) + NoLegend() +
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    ggsave(file.path(OUT_DIR, paste0(title, "_boxplot.png")),
+        plot = p_b, width = 20, height = 15, units = "cm", dpi = 200, bg = "white"
+    )
+}
+
+# ============================================================
+# One-way ANOVA + TukeyHSD per signature ----
+# ============================================================
+anova_rows <- list()
+tukey_rows <- list()
+for (sc in score_cols) {
+    df <- data.frame(cluster = clusters, score = epi@meta.data[[sc]])
+    fit <- aov(score ~ cluster, data = df)
+    s <- summary(fit)[[1]]
+    anova_rows[[length(anova_rows) + 1]] <- data.frame(
+        signature  = sub("_ssGSEA$", "", sc),
+        df_between = s["cluster", "Df"],
+        df_within  = s["Residuals", "Df"],
+        F_stat     = s["cluster", "F value"],
+        p_value    = s["cluster", "Pr(>F)"]
+    )
+    tuk <- TukeyHSD(fit)$cluster
+    tuk_df <- as.data.frame(tuk)
+    tuk_df$signature  <- sub("_ssGSEA$", "", sc)
+    tuk_df$comparison <- rownames(tuk_df)
+    rownames(tuk_df) <- NULL
+    tukey_rows[[length(tukey_rows) + 1]] <- tuk_df
+}
+anova_df <- do.call(rbind, anova_rows)
+tukey_df <- do.call(rbind, tukey_rows)
+tukey_df <- tukey_df[, c("signature", "comparison", "diff", "lwr", "upr", "p adj")]
+names(tukey_df)[names(tukey_df) == "p adj"] <- "p_adj"
+
+write.csv(anova_df,
+    file.path(OUT_DIR, "OneWay_ANOVA_per_signature.csv"), row.names = FALSE)
+write.csv(tukey_df,
+    file.path(OUT_DIR, "TukeyHSD_signature_cluster_pairs.csv"), row.names = FALSE)
+
+mean_by_clu <- sapply(score_cols, function(sc)
+    tapply(epi@meta.data[[sc]], clusters, mean, na.rm = TRUE))
+colnames(mean_by_clu) <- sub("_ssGSEA$", "", colnames(mean_by_clu))
+write.csv(round(mean_by_clu, 4),
+    file.path(OUT_DIR, "mean_ssGSEA_per_cluster.csv"))
+
+# ============================================================
+# Save ----
+# ============================================================
+# Note: saveRDS(epi, OUT_RDS) happens inside the compute branch above.
+message("Done. Outputs in: ", OUT_DIR)
+message("Annotated object: ", OUT_RDS)

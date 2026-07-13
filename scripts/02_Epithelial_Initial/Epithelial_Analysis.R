@@ -2,8 +2,8 @@
 #
 # 원본 scripts/02_Epithelial_Initial/Epithelial_Analysis.R 와 동일한 방법론이되,
 # 입력을 decontX 파이프라인의 stage-01 객체로 바꾸고 출력을 별도 경로로 낸다.
-#   입력: Results/01_Integrated_decontX/combined_CRPC_decontX.rds  (celltype 부여됨)
-#   출력: Results/02_Epithelial_Initial_decontX/
+#   입력: Results/01_Integrated/combined_CRPC.rds  (celltype 부여됨)
+#   출력: Results/02_Epithelial_Initial/
 # 파라미터(res_vec, Harmony seed=42, UMAP 설정, 마커 패널)는 원본과 동일하게 유지.
 
 library(Seurat)
@@ -20,7 +20,7 @@ options(future.globals.maxSize = 128 * 1024^3)
 
 source("scripts/00_utils/scRNA_utils.R")
 
-IN_RDS  <- "Results/01_Integrated_decontX/combined_CRPC_decontX.rds"
+IN_RDS  <- "Results/01_Integrated/combined_CRPC.rds"
 OUT_DIR <- "Results/02_Epithelial_Initial_decontX"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
