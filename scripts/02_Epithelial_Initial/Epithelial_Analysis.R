@@ -21,7 +21,7 @@ options(future.globals.maxSize = 128 * 1024^3)
 source("scripts/00_utils/scRNA_utils.R")
 
 IN_RDS  <- "Results/01_Integrated/combined_CRPC.rds"
-OUT_DIR <- "Results/02_Epithelial_Initial_decontX"
+OUT_DIR <- "Results/02_Epithelial_Initial"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 EPI_RDS  <- file.path(OUT_DIR, "epi_clustered.rds")

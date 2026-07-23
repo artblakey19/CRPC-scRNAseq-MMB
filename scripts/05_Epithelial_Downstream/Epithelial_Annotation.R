@@ -1,4 +1,4 @@
-# Epithelial_Annotation_decontX.R
+# Epithelial_Annotation.R
 # decontX filtered epi cluster -> cell-type label mapping.
 # 원본 Epithelial_Annotation.R 와 동일 라벨 체계(12 labels). 매핑은 decontX
 # res-0.3 canonical 클러스터를 원본 annotated 객체와 marker-profile 상관
@@ -21,7 +21,7 @@ OUT_RDS <- "Results/05_Epithelial_Downstream/epi_annotated.rds"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # decontX res-0.3 (12 clusters) 전용 매핑. cluster 정수 ID 는 rerun 간 불안정하므로
-# 이 맵은 현재 Results/04_..._decontX RDS 에만 유효.
+# 이 맵은 현재 Results/04_Epithelial_Filtered RDS 에만 유효.
 #   BE 5 = cl3 (AP-1/heat-stress), OE = cl6 (CFTR+), LE(ARPC) = cl9 (KLK2/FOLH1),
 #   Ionocyte = cl11 (FOXI1/ATP6V), Club = cl2 (MMP7/PIGR).
 cluster_to_label <- c(

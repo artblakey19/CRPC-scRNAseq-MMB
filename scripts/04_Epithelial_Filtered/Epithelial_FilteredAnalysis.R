@@ -30,7 +30,7 @@ source("scripts/00_utils/scRNA_utils.R")
 
 IN_RDS       <- "Results/02_Epithelial_Initial/epi_clustered.rds"
 DECISION_CSV <- "Results/03_Epithelial_FilterDecision/filter_decision.csv"
-OUT_DIR      <- "Results/04_Epithelial_Filtered_decontX"
+OUT_DIR      <- "Results/04_Epithelial_Filtered"
 OUT_RDS      <- file.path(OUT_DIR, "epi_filtered_clustered.rds")
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 

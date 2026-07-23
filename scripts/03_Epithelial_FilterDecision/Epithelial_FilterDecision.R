@@ -15,7 +15,7 @@ library(patchwork)
 source("scripts/00_utils/scRNA_utils.R")
 
 IN_RDS  <- "Results/02_Epithelial_Initial/epi_clustered.rds"
-OUT_DIR <- "Results/03_Epithelial_FilterDecision_decontX"
+OUT_DIR <- "Results/03_Epithelial_FilterDecision"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 epi <- readRDS(IN_RDS)

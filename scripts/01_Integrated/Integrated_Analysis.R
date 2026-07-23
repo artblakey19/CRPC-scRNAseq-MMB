@@ -38,7 +38,7 @@ bpp <- MulticoreParam(workers = 30, RNGseed = 42)
 
 source("scripts/00_utils/scRNA_utils.R")
 
-OUT_DIR <- "Results/01_Integrated_decontX"
+OUT_DIR <- "Results/01_Integrated"
 QC_DIR  <- file.path(OUT_DIR, "QC")
 DX_DIR  <- file.path(OUT_DIR, "DecontX")
 dir.create(QC_DIR, showWarnings = FALSE, recursive = TRUE)
