@@ -12,6 +12,8 @@
 #     → scDblFinder (decontaminated counts) → merge → QC filter
 #     → SCT → Harmony(seed) → cluster res 0.5 → CellCycle → SingleR
 #     → [checkpoint 저장]  ── celltype RenameIdents 는 새 cluster 검토 후 아래 map 으로 부여
+#     → stromal refinement: Fibroblast+SMC 만 재클러스터링(SCT→Harmony→res 0.3) 후
+#       subcluster 맵으로 celltype 갱신 (Pericyte / Schwann cell 추가) → 최종 저장
 #
 # 배경 매트릭스(raw/empty droplet)는 이 데이터에 없으므로 decontX default 모드
 # (filtered matrix + 내부 cluster 로 ambient 추정)로 실행 — decontX 는 SoupX 와 달리
@@ -383,16 +385,172 @@ if (length(celltype_map) > 0) {
     )
     Idents(combined_CRPC) <- "celltype"
 
+    # =======================================================================
+    # Stromal refinement ----
+    #   위 coarse map 의 'Smooth muscle cells'(cl 11+12) 는 pericyte / vascular SMC /
+    #   fibroblast / Schwann / 저품질 mesenchyme 의 lump 이고, 'Fibroblast'(cl 1) 에도
+    #   SMC 가 섞여 있다 (2026-08 외부 CRPC1 재주석 비교 + 기질 subclustering).
+    #   기질은 전체의 6% 라 mural 축이 공용 PCA 에 실려 있지 않아 전체 해상도를 올려도
+    #   갈리지 않는다 → 상피(stage 02)와 같은 방식으로 기질만 떼어 재클러스터링하고
+    #   subcluster → 라벨 맵으로 celltype 을 갱신한다. 진단 그림은 OUT_DIR/Stromal/.
+    # =======================================================================
+    STR_DIR <- file.path(OUT_DIR, "Stromal")
+    dir.create(STR_DIR, showWarnings = FALSE, recursive = TRUE)
+    str_res_vec <- c(0.1, 0.2, 0.3, 0.4, 0.6, 0.8, 1.0, 1.2)
+
+    str_obj <- subset(combined_CRPC,
+        subset = celltype %in% c("Fibroblast", "Smooth muscle cells"))
+    message("Stromal subset: ", ncol(str_obj), " cells")
+    str_obj$parent_celltype <- as.character(str_obj$celltype)
+    str_obj$parent_cluster  <- as.character(str_obj$seurat_clusters)
+
+    DefaultAssay(str_obj) <- "RNA"
+    if ("SCT" %in% names(str_obj@assays)) str_obj[["SCT"]] <- NULL
+    str_obj[["RNA"]] <- JoinLayers(str_obj[["RNA"]])
+    str_obj[["RNA"]] <- split(str_obj[["RNA"]], f = str_obj$orig.ident)
+    str_obj@meta.data <- dplyr::select(str_obj@meta.data,
+        -matches("_snn_res\\."), -any_of("seurat_clusters"))
+
+    str_obj <- SCTransform(str_obj, verbose = FALSE)
+    str_obj <- RunPCA(str_obj, verbose = FALSE)
+    set.seed(42)
+    str_obj <- IntegrateLayers(
+        object = str_obj, method = HarmonyIntegration,
+        orig.reduction = "pca", new.reduction = "harmony",
+        normalization.method = "SCT", verbose = FALSE
+    )
+    str_obj[["RNA"]] <- JoinLayers(str_obj[["RNA"]])
+    str_obj <- FindNeighbors(str_obj, reduction = "harmony", dims = 1:30)
+    str_obj <- FindClusters(str_obj, resolution = str_res_vec)
+    str_obj$stromal_subcluster <- factor(as.character(str_obj$SCT_snn_res.0.3),
+        levels = as.character(sort(unique(as.integer(as.character(str_obj$SCT_snn_res.0.3))))))
+    str_obj <- RunUMAP(str_obj, reduction = "harmony", dims = 1:30,
+        n.neighbors = 20, min.dist = 0.1, spread = 4.0)
+
+    # res-0.3 subcluster → 라벨 (마커 + 외부 CRPC1 재주석 교차검증으로 확정)
+    #   c6  pericyte (HIGD1B/NDUFA4L2/GJA4/ADGRF5)
+    #   c4  vascular SMC (PLN/RERGL/CASQ2, MYH11+ 99.8%, NOTCH3+ 65%) → Pericyte 로 통합
+    #   c9  분화 SM (DES/ACTG2/MYLK/CNN1),  c8  MYH11+ 저복잡도 SM
+    #   c10 Schwann (PLP1/S100B/SOX10/CDH19)
+    #   c0 APOD+ / c1 ASPN·OGN·C7 / c3 PENK·PTGDS / c7 CA3·APOE fibroblast
+    #   c2·c5·c8 은 부모 cl 11 유래 저복잡도(nCount 중앙값 1.2k~2.2k) — 계통 힌트대로 배정
+    # ⚠️ cluster 정수 ID 는 rerun 간 불안정할 수 있다. ID 가 맵에 없으면 아래 stopifnot 이
+    #    멈추므로 Stromal/ 진단 그림을 보고 맵을 다시 채운다 (조용한 오배정 방지).
+    stromal_map <- c(
+        `0` = "Fibroblast", `1` = "Fibroblast", `2` = "Fibroblast",
+        `3` = "Fibroblast", `7` = "Fibroblast",
+        `4` = "Pericyte",   `5` = "Pericyte",   `6` = "Pericyte",
+        `8` = "Smooth muscle cells", `9` = "Smooth muscle cells",
+        `10` = "Schwann cell"
+    )
+    str_sub <- as.character(str_obj$stromal_subcluster)
+    stopifnot(all(str_sub %in% names(stromal_map)))
+    str_obj$celltype <- factor(unname(stromal_map[str_sub]),
+        levels = c("Fibroblast", "Pericyte", "Smooth muscle cells", "Schwann cell"))
+    Idents(str_obj) <- "celltype"
+
+    # canonical celltype 갱신 (기질 세포만 바뀜)
+    ct <- as.character(combined_CRPC$celltype)
+    ct[match(colnames(str_obj), colnames(combined_CRPC))] <- as.character(str_obj$celltype)
+    celltype_levels <- c("Epithelial", "Fibroblast", "Pericyte", "Smooth muscle cells",
+                         "Schwann cell", "Endothelial", "T/NK cells", "Phagocytes", "Mast cells")
+    stopifnot(all(ct %in% celltype_levels))
+    combined_CRPC$celltype <- factor(ct, levels = celltype_levels)
+    Idents(combined_CRPC) <- "celltype"
+    message("Stromal refinement 적용:")
+    print(table(str_obj$parent_celltype, str_obj$celltype))
+
+    # --- Stromal 진단 출력 --------------------------------------------------
+    n_sub <- nlevels(str_obj$stromal_subcluster)
+    p <- DimPlot(str_obj, group.by = "stromal_subcluster", label = TRUE, pt.size = 0.4,
+                 cols = utils_cb_palette(n_sub)) + ggtitle("Stromal subclusters (res 0.3)")
+    ggsave(file.path(STR_DIR, "UMAP_subcluster.png"), plot = p, width = 10, height = 8, bg = "white")
+    p <- DimPlot(str_obj, group.by = "celltype", label = TRUE, pt.size = 0.4,
+                 cols = utils_cb_palette(4)) + ggtitle("Stromal cell types")
+    ggsave(file.path(STR_DIR, "UMAP_celltype.png"), plot = p, width = 10, height = 8, bg = "white")
+    p <- DimPlot(str_obj, group.by = "celltype", split.by = "orig.ident", label = TRUE,
+                 pt.size = 0.4, cols = utils_cb_palette(4))
+    ggsave(file.path(STR_DIR, "UMAP_celltype_by_patient.png"), plot = p, width = 24, height = 8, bg = "white")
+    p <- DimPlot(str_obj, group.by = "parent_cluster", label = TRUE, pt.size = 0.4,
+                 cols = utils_cb_palette(dplyr::n_distinct(str_obj$parent_cluster))) +
+        ggtitle("Parent res-0.5 cluster (1 = Fibroblast, 11/12 = coarse 'SMC')")
+    ggsave(file.path(STR_DIR, "UMAP_parent_cluster.png"), plot = p, width = 10, height = 8, bg = "white")
+    umap_list <- lapply(str_res_vec, function(r) {
+        rcol <- paste0("SCT_snn_res.", r)
+        DimPlot(str_obj, group.by = rcol, label = TRUE, pt.size = 0.3,
+                cols = utils_cb_palette(dplyr::n_distinct(str_obj@meta.data[[rcol]]))) +
+            ggtitle(paste0("res = ", r)) + NoLegend()
+    })
+    ggsave(file.path(STR_DIR, "UMAP_multires.png"), plot = wrap_plots(umap_list, ncol = 3),
+           width = 18, height = 14, dpi = 200, bg = "white")
+
+    p <- VlnPlot(str_obj, group.by = "stromal_subcluster", pt.size = 0, ncol = 2,
+                 features = c("nFeature_RNA", "nCount_RNA", "percent.mt", "decontX_contamination"),
+                 cols = utils_cb_palette(n_sub))
+    ggsave(file.path(STR_DIR, "QC_violin_by_subcluster.png"), plot = p, width = 16, height = 10, bg = "white")
+
+    stromal_markers <- list(
+        Fibroblast    = c("DCN", "LUM", "PDGFRA", "COL1A1", "FBLN1", "APOD"),
+        Pericyte      = c("RGS5", "NOTCH3", "HIGD1B", "NDUFA4L2", "KCNJ8", "GJA4"),
+        `Smooth muscle cells` = c("MYH11", "ACTG2", "DES", "MYLK", "CNN1", "ACTA2"),
+        Schwann       = c("PLP1", "S100B", "MPZ", "SOX10", "CDH19"),
+        Contamination = c("PECAM1", "PTPRC", "EPCAM", "KRT8")
+    )
+    p <- DotPlot(str_obj, features = stromal_markers, group.by = "stromal_subcluster",
+                 cluster.idents = FALSE) + RotatedAxis() +
+        scale_color_gradient2(low = "#1F77B4", mid = "grey90", high = "#D7261E") +
+        labs(title = "Stromal markers by subcluster")
+    ggsave(file.path(STR_DIR, "DotPlot_by_subcluster.png"), plot = p, width = 20, height = 8, bg = "white")
+    p <- DotPlot(str_obj, features = stromal_markers, group.by = "celltype",
+                 cluster.idents = FALSE) + RotatedAxis() +
+        scale_color_gradient2(low = "#1F77B4", mid = "grey90", high = "#D7261E") +
+        labs(title = "Stromal markers by cell type")
+    ggsave(file.path(STR_DIR, "DotPlot_by_celltype.png"), plot = p, width = 18, height = 6, bg = "white")
+
+    write.csv(as.data.frame.matrix(table(parent = str_obj$parent_cluster,
+                                         subcluster = str_obj$stromal_subcluster)),
+              file.path(STR_DIR, "parent_vs_subcluster.csv"))
+    write.csv(as.data.frame.matrix(table(str_obj$stromal_subcluster, str_obj$celltype)),
+              file.path(STR_DIR, "subcluster_to_celltype.csv"))
+    write.csv(as.data.frame.matrix(table(str_obj$celltype, str_obj$orig.ident)),
+              file.path(STR_DIR, "celltype_by_patient.csv"))
+    qc_tab <- str_obj@meta.data %>%
+        group_by(subcluster = stromal_subcluster) %>%
+        summarise(n = n(), median_nCount = median(nCount_RNA),
+                  median_nFeature = median(nFeature_RNA),
+                  median_mt = round(median(percent.mt), 2),
+                  median_decontX = round(median(decontX_contamination), 3), .groups = "drop")
+    write.csv(qc_tab, file.path(STR_DIR, "subcluster_QC_summary.csv"), row.names = FALSE)
+
+    Idents(str_obj) <- "stromal_subcluster"
+    utils_save_all_markers(str_obj, file.path(STR_DIR, "all_markers_by_subcluster.csv"))
+    Idents(str_obj) <- "celltype"
+    saveRDS(str_obj, file.path(STR_DIR, "stromal_annotated.rds"))
+    rm(str_obj); gc()
+
+    # --- 최종 celltype 그림 ---------------------------------------------------
+    n_ct <- nlevels(combined_CRPC$celltype)
     p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", label = TRUE,
-        cols = utils_cb_palette(nlevels(factor(combined_CRPC$celltype))))
+        cols = utils_cb_palette(n_ct))
     ggsave(file.path(OUT_DIR, "Labelled_UMAP_integrated.png"), plot = p, width = 15, height = 15, bg = "white")
 
     p <- DimPlot(combined_CRPC, reduction = "umap", group.by = "celltype", split.by = "orig.ident", label = TRUE,
-        cols = utils_cb_palette(nlevels(factor(combined_CRPC$celltype))))
+        cols = utils_cb_palette(n_ct))
     ggsave(file.path(OUT_DIR, "Labelled_UMAP_by_patient.png"), plot = p, width = 24, height = 15, bg = "white")
 
+    comp <- as.data.frame(table(celltype = combined_CRPC$celltype, patient = combined_CRPC$orig.ident))
+    p <- ggplot(comp, aes(x = patient, y = Freq, fill = celltype)) +
+        geom_col(position = "fill") +
+        scale_fill_manual(values = utils_cb_palette(n_ct)) +
+        labs(y = "fraction of cells", x = NULL, title = "Cell type composition by patient") +
+        theme_classic(base_size = 14)
+    ggsave(file.path(OUT_DIR, "Celltype_composition_by_patient.png"), plot = p, width = 8, height = 6, bg = "white")
+    write.csv(as.data.frame.matrix(table(combined_CRPC$celltype, combined_CRPC$orig.ident)),
+              file.path(OUT_DIR, "celltype_by_patient.csv"))
+
     saveRDS(combined_CRPC, INT_RDS)   # persist celltype for stage 02 subset
-    message("celltype 부여 완료 → ", INT_RDS)
+    message("celltype 부여 완료 (stromal refinement 포함) → ", INT_RDS)
+    print(table(combined_CRPC$celltype))
 } else {
     message("celltype_map 비어 있음 — cluster/marker 검토 후 채우고 재실행하면 ",
             "reload 모드로 celltype 부여 + 저장")

@@ -71,17 +71,23 @@ ggsave(file.path(VIS, "umap_infercnv_overview.png"),
        p_ann + p_pga + p_sco + plot_layout(nrow = 1), width = 18, height = 5.5, dpi = 150)
 
 # --- 2) PGA, 환자별 split ----------------------------------------------------
+# ⚠ FeaturePlot(split.by=) 는 legend 를 지우고 feature 명을 우측 y축 라벨로만 남긴다.
+#   patchwork guides="collect" + legend.position 으로 공통 colorbar 를 되살린다.
 p_split <- FeaturePlot(epi, "inferCNV_PGA_capped", reduction = red,
                        split.by = "orig.ident", order = TRUE, pt.size = 0.25) &
            vir("PGA")
+p_split <- p_split + plot_layout(guides = "collect") &
+           theme(legend.position = "right")
 ggsave(file.path(VIS, "umap_pga_by_patient.png"), p_split,
-       width = 16, height = 5.2, dpi = 150)
+       width = 17, height = 5.2, dpi = 150)
 
 # --- 3) score, 환자별 split --------------------------------------------------
 p_split2 <- FeaturePlot(epi, "inferCNV_score", reduction = red,
                         split.by = "orig.ident", order = TRUE, pt.size = 0.25) &
             vir("score")
+p_split2 <- p_split2 + plot_layout(guides = "collect") &
+            theme(legend.position = "right")
 ggsave(file.path(VIS, "umap_score_by_patient.png"), p_split2,
-       width = 16, height = 5.2, dpi = 150)
+       width = 17, height = 5.2, dpi = 150)
 
 cat("[06] done ->", VIS, "\n")
