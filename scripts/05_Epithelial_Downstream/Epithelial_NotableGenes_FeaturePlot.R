@@ -52,7 +52,8 @@ gene_map <- c(
     "GGCT"   = "GGCT",    # gamma-glutamyl cyclotransferase (added)
     "PRPS1"  = "PRPS1",   # phosphoribosyl pyrophosphate synthetase 1 (added)
     "PNP"    = "PNP",     # purine nucleoside phosphorylase (added)
-    "CCL2"   = "CCL2"     # C-C motif chemokine ligand 2 / MCP-1 (added)
+    "CCL2"   = "CCL2",    # C-C motif chemokine ligand 2 / MCP-1 (added)
+    "KLF5"   = "KLF5"     # Kruppel-like factor 5; basal/squamous lineage TF (added)
 )
 
 epi <- readRDS(IN_RDS)
