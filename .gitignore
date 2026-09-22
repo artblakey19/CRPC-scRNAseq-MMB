@@ -19,3 +19,5 @@ Resources/
 # pipeline runtime artifacts
 logs/
 .tmp_sort/
+# Archived analyses (scripts+Results+logs per topic, each with README) — kept on disk only
+archive/
